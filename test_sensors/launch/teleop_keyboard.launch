@@ -1,0 +1,8 @@
+<launch>
+<param name="/use_sim_time" value="true"/>
+
+  <node pkg="teleop_twist_keyboard" type="teleop_twist_keyboard.py" name="teleop" output="screen">
+  <remap from="cmd_vel" to="teleop_vel"/>
+  </node>
+  
+</launch>
