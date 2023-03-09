@@ -84,18 +84,13 @@ define erratic position
   topurg(pose [ 0 0.000 0.000 0.000 ])
 )
 
-define block2 model
-(
-  size [0.150 0.150 0.150]
-  gui_nose 0
-  ranger_return 1
-)
 
 
 # throw in a robot
 erratic( pose [ -6 -6 0 0 ] name "Audrie" color "blue")
-block( pose [ 4 -6 0 0 ] name "obstacle" color "red")
-block2 (pose [ 2 2 0 0 ] name "obstacle2" color "green" )
+block( pose [ -4 -6 0 0 ] name "obstacle" color "red")
+block( pose [ -4.5 -5.5 0 0 ] name "obstacle2" color "red")
+block( pose [ -4.5 -6.5 0 0] name "obstacle3" color "red")
 target2( pose [ 2 -5 0 0 ] name "t1" color "yellow")
 target2( pose [ 4 -1 0 0 ] name "t2" color "yellow")
 target2( pose [ -2 0 0 0 ] name "t3" color "yellow")
