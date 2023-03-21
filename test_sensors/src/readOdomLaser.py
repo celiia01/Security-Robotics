@@ -92,54 +92,73 @@ class TestNode:
 		self.lock.acquire()
 		dt = self.timeCall
 		self.lock.release()
-		if v > 0 and v < 0.0001:
+		if (v > 0 and v < 0.001) or v == 0:
 			distance = 30.0
-			return distance
-		elif w > 0 and w < 0.0001:
+			#print("giro")
+			return distance, distance
+		elif abs(w) > 0 and abs(w) < 0.0001:
 			distance = np.amin(middle)
-			return distance - v * dt 
+			#print("distance middle: ", np.amin(middle))
+			return distance - v * dt, distance 
 		elif w > 0.0001:
 			distance = np.amin(middle) if np.amin(middle) < np.amin(bottom) else np.amin(bottom)
+			#print("middle: ", np.amin(middle), ", bottom: ", np.amin(bottom))
 		else:
 			distance = np.amin(middle) if np.amin(middle) < np.amin(top) else np.amin(top)
+			#print("middle: ", np.amin(middle), ", top: ", np.amin(top))
 
-		return distance - (v/w * (w * dt))
+		return distance - (v/w * (w * dt)), distance
 	
+	def acelerationsForBreak(self, distance, distance0, v):
+		acV = 2 * (distance0 - distance - v * self.timeCall) / self.timeCall ** 2
+		return acV if abs(acV) > 0.001 else 0
 	# OPTIMIZAR BUCLE!!!!
 	def velocities(self, middle: np.array, top: np.array, bottom: np.array, 
 		vAct: float, wAct: float, vMin: float, vMax: float, wMin: float, wMax: float):
 		aceleMaxV = 0.7
 		aceleMaxW = math.pi
+		vChange = 0.01
+		wChange = math.pi /180.0
 
 		Vr = []
-		Vs = []
+		x = int((vMax - vMin) / vChange)
+		y = int((wMax - wMin) / wChange)
+		Vr1 = np.zeros([x,y])
 		t1 = time.clock_gettime(time.CLOCK_REALTIME)
-		for v in np.arange(vMin, vMax, 0.01):
-			for w in np.arange(wMin, wMax, math.pi/180.0):
-			
-				distance = TestNode.dist(self, v, w, middle,top,bottom)
+		i = 0
+		j = 0
+		limitVLow = vAct - aceleMaxV * self.timeCall
+		limitVUp = vAct + aceleMaxV * self.timeCall
+		limitWLow = wAct - aceleMaxW * self.timeCall
+		limitWUp = wAct + aceleMaxW * self.timeCall
 
-				limitVLow = vAct - aceleMaxV * self.timeCall
-				limitVUp = vAct + aceleMaxV * self.timeCall
-				limitWLow = wAct - aceleMaxW * self.timeCall
-				limitWUp = wAct + aceleMaxW * self.timeCall
+
+		for v in np.arange(vMax, vMin, -vChange):
+			v = 0 if v > 0 and v < 0.01 else v
+			for w in np.arange(wMin, wMax, wChange):
+				
+				#print("v: ", v, ", w: ", w)
+				w = 0 if abs(w) < 0.001 and abs(w) > 0 else w
+				distance, distance0 = TestNode.dist(self, v, w, middle,top,bottom)
+				#print(distance, ", ", distance0)
+
+				# Accelerations for breakage??
+				acelBreakV = TestNode.acelerationsForBreak(self,distance, distance0, v)
+				#print(acelBreakV)
+
 				limitV = math.sqrt(2.0 * distance * aceleMaxV)
 				limitW = math.sqrt(2.0 * distance * aceleMaxW)
-
-
+			
 				if (v >= limitVLow and v <= limitVUp and w >= limitWLow and w <= limitWUp and v <= limitV and w <= limitW):
 					Vr.append([v,w])
-
-				Vs.append([v,w])				
-				# Accelerations for breakage??
+					Vr1[i][j] = 1
+				j += 1
+			j = 0
+			i += 1
 
 		t2 = time.clock_gettime(time.CLOCK_REALTIME) - t1
-		print(t2)
-
-
-
-		return Vs, Vr
-		
+		return Vr, Vr1
+	"""	
 	# Admissible Velocities
 	def velocityAdmissible(self, middle: np.array, top: np.array, bottom: np.array, 
 			vA):
@@ -172,7 +191,6 @@ class TestNode:
 
 		for v in np.arange(vMin, vMax, 0.01):
 			for w in np.arange(wMin, wMax, math.pi/180.0):
-			
 
 				limitVLow = vAct - aceleMaxV * self.timeCall
 				limitVUp = vAct + aceleMaxV * self.timeCall
@@ -183,18 +201,19 @@ class TestNode:
 					Vd.append([v,w])
 
 		return Vd
-		
+		"""
 		
 
 	def callback(self, scan: LaserScan, odom: Odometry, desired_vel: TwistStamped):
 		x = odom.pose.pose.position.x
 		y = odom.pose.pose.position.y
-		# Actual Velocities
-		vAct = odom.twist.twist.linear.x
-		wAct = odom.twist.twist.angular.z
 		# Desired Velocities
 		desired_v = desired_vel.twist.linear.x																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																							
 		desired_w = desired_vel.twist.angular.z
+		# Actual Velocities
+		vAct = odom.twist.twist.linear.x if odom.twist.twist.linear.x > 0.0 or odom.twist.twist.linear.x < 0.0 else desired_v
+		wAct = odom.twist.twist.angular.z if odom.twist.twist.angular.z > 0.0 or odom.twist.twist.angular.z < 0.0 else desired_w
+		
 		distance = 0.5
 		scan_ranges = np.array(scan.ranges)
 		middle = np.array(scan_ranges[478:600])
@@ -207,20 +226,20 @@ class TestNode:
 		vMax = 0.7
 		wMax = math.pi
 
-		
-		x = np.arange(vMin, vMax, 0.01)
-		y = np.arange(wMin, wMax, math.pi/180.0)
 
 		Vs = np.array([[0 for w in np.arange(wMin, wMax, math.pi/180.0)] for v in np.arange(vMin, vMax, 0.01)])
+		
 
-		plt.matshow(Vs)
+		_,Vr = TestNode.velocities(self, middle, top, bottom, vAct, wAct, vMin, vMax, wMin, wMax)
+		
+		# CODE inspirated from geeksgorgeeks.org/matplot-pyplot-matshow-in-python/
+		fig = plt.figure()
+		ax = fig.add_subplot(111)
+
+		ax.matshow(Vr)
+
 		plt.show()
-
-		_, Vr = TestNode.velocities(self, middle, top, bottom, vAct, wAct, vMin, vMax, wMin, wMax)
-		
-		
-
-		
+		plt.close('all')
 		
 		#print(middle)
 

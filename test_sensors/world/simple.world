@@ -89,7 +89,7 @@ define erratic position
 # throw in a robot
 erratic( pose [ -6 -6 0 0 ] name "Audrie" color "blue")
 #block( pose [ -4 -6 0 0 ] name "obstacle" color "red")
-block( pose [ -4.5 -5.5 0 0 ] name "obstacle2" color "red")
+block( pose [ -5 -6 0 0 ] name "obstacle2" color "red")
 #block( pose [ -4.5 -6.5 0 0] name "obstacle3" color "red")
 target2( pose [ 2 -5 0 0 ] name "t1" color "yellow")
 target2( pose [ 4 -1 0 0 ] name "t2" color "yellow")
