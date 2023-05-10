@@ -25,6 +25,12 @@ class TestNode:
 	AMAXV = 0.7
 	AMAXW = math.pi
 
+	#
+	VMAX = 0.7
+	VMIN = 0
+	WMAX = math.pi
+	WMIN = -math.pi
+
 	MAXDISTANCE = AMAXW/2
 
 	SIZEROBOT = 0.15
@@ -172,13 +178,14 @@ class TestNode:
 		
 	
 
-	def velocities(self, vAct: float, wAct: float, vMin: float, vMax: float, wMin: float, wMax: float, scan_sub: np.array):
+	def velocities(self, vAct: float, wAct: float, scan_sub: np.array):
 		vChange = 0.05
 		wChange = 5 * math.pi / 180.0
 
-		x = int(round((vMax - vMin) / vChange, 0)) + 1
-		y = int(round((wMax - wMin) / wChange, 0)) + 1
+		x = int(round((self.VMAX - self.VMIN) / vChange, 0)) + 1
+		y = int(round((self.WMAX - self.WMIN) / wChange, 0)) + 1
 		dWA = np.zeros([x,y])
+		posibilities = np.ones([x, y])
 		t1 = time.clock_gettime(time.CLOCK_REALTIME)
 		i = 0
 		j = 0
@@ -191,13 +198,10 @@ class TestNode:
 
 		obstacle = False
 
-		for v in np.arange(vMax, vMin, -vChange):
+		for v in np.arange(self.VMAX, self.VMIN, -vChange):
 			v = 0 if v > 0 and v < 0.01 else round(v, 2)
-			for w in np.arange(wMin, wMax + wChange, wChange):
+			for w in np.arange(self.WMIN, self.WMAX + wChange, wChange):
 				w = 0 if abs(w) < 0.001 and abs(w) > 0 else round(w,3)
-				# Actual Velocity
-				if (v == vAct and w == wAct):
-					dWA[i][j] = self.ACTUAL
 				obstacle = False
 				for d in scan_sub:
 					# Maximum distance that limitW can be lower than w, the maximum distance thar limitV can be lower than v
@@ -225,7 +229,7 @@ class TestNode:
 
 
 						# Feasible velocities
-						if (v >= limitVLow and v <= limitVUp and w >= limitWLow and w <= limitWUp and v <= limitV and wAdmissible and dWA[i][j]!= self.ACTUAL and dWA[i][j] != self.FORBIDEN):
+						if (v >= limitVLow and v <= limitVUp and w >= limitWLow and w <= limitWUp and v <= limitV and wAdmissible and dWA[i][j] != self.FORBIDEN):
 							dWA[i][j] = self.FEASIBLE
 						# Dynamic Window
 						elif (v >= limitVLow and v <= limitVUp and w >= limitWLow and w <= limitWUp and (dWA[i][j] == 0 or dWA[i][j] == self.DYNAMIC_WINDOW or dWA[i][j] == self.FORBIDEN)):
@@ -254,10 +258,15 @@ class TestNode:
 					elif (v >= limitVLow and v <= limitVUp and w >= limitWLow and w <= limitWUp and (dWA[i][j] == 0 or dWA[i][j] == self.DYNAMIC_WINDOW)):
 						dWA[i][j] = self.DYNAMIC_WINDOW
 					# Forbidden Velocities
-					elif ((v > limitV or not(wAdmissible)) and (dWA[i][j] != self.ACTUAL and dWA[i][j] != self.DYNAMIC_WINDOW)):
+					elif ((v > limitV or not(wAdmissible)) and dWA[i][j] != self.DYNAMIC_WINDOW):
+						posibilities[i][j] = 0
 						dWA[i][j] = self.FORBIDEN
 
-
+				# Actual Velocity
+				if (v == vAct and w == wAct):
+					dWA[i][j] = self.ACTUAL
+					# posibilities[i][j] = 0
+				
 				j += 1
 
 			j = 0
@@ -266,7 +275,7 @@ class TestNode:
 		t2 = time.clock_gettime(time.CLOCK_REALTIME) - t1
 		#self.timeCall = t2
 		# print(t2)
-		return dWA
+		return posibilities
 	
 	def startPlot(self):
 		self.p = Process(target=self.plotDWA(), args=())
@@ -294,39 +303,47 @@ class TestNode:
 			fig.show()
 			plt.pause(0.1)
 
-	def searchVelocities(self, desired_v: float, desired_w: float, velocities):
-		l = len(velocities)
-		desired_w = 0 if desired_w == 0.0 else desired_w
+	def searchVelocities(self, desired_v: float, desired_w: float, posibilities: np.array):
+		'''
+			Search the most proximate velocities to the desired velocities
+		'''
+		print("search")
+		line = int(np.round((self.VMAX - desired_v), 2) / 0.05)
+		colDec = ( desired_w + self.WMAX) * 180 / (5 * math.pi)
+		col = int(np.round(colDec))
+		h,w = posibilities.shape
+		ind = np.array([0,0])
+		vRet, wRet = 0, 0
+		minLine, minCol, maxCol, maxLine = 0, 0, 0, 0 
 
-		vx = desired_v
-		wx = desired_w
-		found, positive, negative, zero = False, False, False, False
-		while(not found):
-			try:
-				ind = velocities.index([vx, wx])
-				found = True
-			except:
-				if wx > -3.14 and not negative:
-					wx -= round( 5 * math.pi /180.0, 3)
-				elif wx == -3.14 and not positive:
-					negative = True
-					wx = desired_w + round(5 * math.pi/180.0, 3)
-				elif wx < 3.14 and not positive:
-					wx += round(5 * math.pi/180, 3)
-				elif wx == 3.14 and not negative:
-					positive = True
-					wx = desired_w
-				elif positive and negative and vx > 0:
-					vx -= 0.05
-					vx = round(vx, 2)
-				elif positive and negative and vx == 0:
-					zero = True
-					vx = desired_v + 0.05
-				elif positive and negative and zero:
-					vx += 0.05
+		if posibilities[line][col] == 0:
+			found = False
+			wind = 1
+
+			while not found and (minLine != 0 or maxLine != h + 1 or minCol != 0 or maxCol != w + 1):
+				#Window with 2 * wind + 1 x 2 * wind + 1
+				minLine = line - wind if line - wind >= 0 else 0
+				maxLine = line + wind + 1 if line + wind <= h else h + 1
+				minCol = col - wind if col - wind >= 0 else 0
+				maxCol = col + wind + 1 if col + wind <= w else w + 1
 
 
-		return velocities[ind][0], velocities[ind][1]
+				newPos = posibilities[minLine : maxLine, minCol: maxCol]
+
+				try:
+					ind = np.where(newPos==1)
+					indv = ind[0][0] - wind
+					indw = ind[1][0] - wind
+					found = True
+				except:
+					wind += 1
+
+		if found:
+			vRet = np.round((self.VMAX - (line + indv) * 0.05), 2)
+			wRet = np.round((self.WMAX - ((colDec + indw) * 5 * math.pi / 180.0) ), 3)
+
+		return vRet, wRet
+
 		
 
 	def callback(self, scan: LaserScan, odom: Odometry, desired_vel: TwistStamped):
@@ -357,20 +374,16 @@ class TestNode:
 
 		scan_sub = np.array([[s[0], np.deg2rad(s[1])] for s in scan_sub])
 
-		# ¿Pongo las velocidades máximas o las deseadas?
-		vMin = 0.0
-		wMin = -math.pi
-		vMax = 0.7
-		wMax = math.pi
 
-
-		# Vs = np.array([[0 for w in np.arange(wMin, wMax, math.pi/180.0)] for v in np.arange(vMin, vMax, 0.01)])
+		# Vs = np.array([[0 for w in np.arange(wMin, wMax, math.pi/180.0)] for v in np.arange(vMin, VMAX, 0.01)])
 		
 
-		arrV= TestNode.velocities(self, vAct, wAct, vMin, vMax, wMin, wMax, scan_sub)
+		posibilities = TestNode.velocities(self, vAct, wAct, scan_sub)
 
 
-		TestNode.searchVelocities(self, desired_v, desired_w, arrV)
+		v, w = TestNode.searchVelocities(self, desired_v, desired_w, posibilities)
+
+		print("v: ", v, ", w: ", w)
 
 		# v, w = TestNode.skipObstacle(self,scan_ranges, middle, top, bottom, desired_v, desired_w, distance)
 		
@@ -378,8 +391,6 @@ class TestNode:
 
 		#print(len(scan.ranges), desired_v)																																																					
 		
-		v  = desired_v
-		w = desired_w
 		self.send_vel(v,w)
 		#rospy.loginfo(rospy.get_caller_id() + "Min range %f", np.minimum(scan_ranges))
 
