@@ -258,7 +258,7 @@ class TestNode:
 				#CALCULO EL RADIO Y LA THETA PARA ALCANZAR DICHA POSICIÓN
 				radius = ((r1XO[0]) ** 2 + (r1XO[1])**2) / (2 * r1XO[1])
 				theta = math.atan2((2 * r1XO[0] * r1XO[1]), (r1XO[0]**2 - r1XO[1]**2))
-				distance = radius * theta
+				distance = abs(radius * theta)
 			
 					
 			if obsDelante:
@@ -275,6 +275,7 @@ class TestNode:
 					rad2 = radius
 			elif obsAbajo:
 				if distance < self.SIZEROBOT and w < 0:
+					print("distance: ", distance)
 					return False
 				if rad1 < radius and radius <= 0:
 					rad1 = radius
@@ -302,10 +303,11 @@ class TestNode:
 				#CALCULO EL RADIO Y LA THETA PARA ALCANZAR DICHA POSICIÓN
 				radius = ((r2XO[0]) ** 2 + (r2XO[1])**2) / (2 * r2XO[1])
 				theta = math.atan2((2 * r2XO[0] * r2XO[1]), (r2XO[0]**2 - r2XO[1]**2))
-				distance = (radius * theta) - self.SIZEROBOT
+				distance = abs(radius * theta) - self.SIZEROBOT
 			
 			if distance < 0 and ((obsDelante and ( (radius > 0 and w > 0) or (radius < 0 and w < 0) or w == 0))
 									or (obsAbajo and w < 0) or (obsArriba and w > 0)):
+				print("distance: ", distance, ", v: ", v, " w: ", w)
 				return False
 	
 			allDistancesR2.append([distance])
@@ -351,18 +353,18 @@ class TestNode:
 				else:
 					if math.sqrt(2.0 * minorDistance * self.AMAXV) < v:
 						return False
-					#print("rad1: ", rad1, " rad2: ", rad2, " r: ", r)
-					if rad1 < 0:
-						rad1 = (rad1 + self.SIZEROBOT) if (rad1 + self.SIZEROBOT) <= 0 else 0
-					else: 
-						rad1 = (rad1 - self.SIZEROBOT) if (rad1 - self.SIZEROBOT) >= 0 else 0
-				
+					print("rad1: ", rad1, " rad2: ", rad2, " r: ", r)
+
+					rad1 = (rad1 + self.SIZEROBOT) if (rad1 + self.SIZEROBOT) <= 0 else 0
+
 					rad2 = (rad2 - self.SIZEROBOT) if rad2 < 0 else (rad2 + self.SIZEROBOT)
+
+					print("rad1: ", rad1, ", rad2: ", rad2, " r: ", r, " v: ", v, ", w: ", w)
 					
 					rad1Forbidden = r <= rad1
 					rad2Forbidden = r >= rad2
 
-					#print("forb1: ", rad1Forbidden, " forb2: ", rad2Forbidden)
+					print("forb1: ", rad1Forbidden, " forb2: ", rad2Forbidden)
 
 
 				forbidden = rad1Forbidden and rad2Forbidden
@@ -378,17 +380,17 @@ class TestNode:
 				else:
 					if math.sqrt(2.0 * minorDistance * self.AMAXV) < v:
 						return False
-					#print("rad1: ", rad1, " rad2: ", rad2, " r: ", r)
+					# print("rad1: ", rad1, " rad2: ", rad2, " r: ", r)
 					
 					rad1 = (rad1 - self.SIZEROBOT) if (rad1 - self.SIZEROBOT) >= 0 else 0
 				
 					rad2 = (rad2 + self.SIZEROBOT)
 					
-					#print("rad1: ", rad1, ", rad2: ", rad2, " r: ", r, " v: ", v, ", w: ", w)
+					# print("rad1: ", rad1, ", rad2: ", rad2, " r: ", r, " v: ", v, ", w: ", w)
 					rad1Forbidden = r >= rad1
 					rad2Forbidden = r <= rad2
 
-					#print("forb1: ", rad1Forbidden, " forb2: ", rad2Forbidden)
+					# print("forb1: ", rad1Forbidden, " forb2: ", rad2Forbidden)
 
 
 				forbidden = rad1Forbidden and rad2Forbidden
@@ -461,7 +463,10 @@ class TestNode:
 					# if distance == 0.0 or not ((sign == -1 and w > 0) or (sign == 1 and w < 0)):
 					#admissible = self.dist(v,w,scan_sub)
 					t3 = time.clock_gettime(time.CLOCK_REALTIME)
-					admissible = self.dist(v,w,scan_sub)
+					admissible = True
+					for obs in scan_sub:
+						admissible = admissible and self.dist(v,w,obs)
+	
 					t4 = time.clock_gettime(time.CLOCK_REALTIME) - t3
 					num = self.restrictionDWA(v, w, admissible, limitVLow, limitVUp, limitWLow, limitWUp)
 					
@@ -661,18 +666,26 @@ class TestNode:
 
 		scan_sub = np.array([[np.amin(scan_ranges[(k-10):k]), th[int((k/10) - 1)]] for k in np.arange(10, len(scan_ranges) + 19, 10)])
 
-		scan_deletes = []
+		scan_deletes, newObs = [], []
 		last_deg = -self.ANGLE_VISION/2
+		begin = False
 		# for s in scan_sub:
 		# 	if s[0] - self.SIZEROBOT<= self.MAXDISTANCE:
 		# 		scan_deletes += [[s[0] - self.SIZEROBOT, np.deg2rad(s[1])]]
 
 		for s in scan_sub:
 			if s[0] - self.SIZEROBOT<= self.MAXDISTANCE:
-				scan_deletes += [[s[0] - self.SIZEROBOT, np.deg2rad(s[1])]]
+				if not begin:
+					newObs = []
+					begin = True
+				newObs += [[s[0] - self.SIZEROBOT, np.deg2rad(s[1])]]
+			else:
+				if begin:
+					scan_deletes += [newObs]
+					begin = False
 
-		print("scan_deletes: ")
-		print(scan_deletes)
+		if len(newObs) > 0:
+			scan_deletes += [newObs]
 		
 
 
