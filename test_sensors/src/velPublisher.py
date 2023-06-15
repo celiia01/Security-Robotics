@@ -10,8 +10,8 @@ class VelPub:
 
 	def publish(self):
 		msg = TwistStamped()
-		msg.twist.linear.x = 0
-		msg.twist.angular.z = 0
+		msg.twist.linear.x = 0.5
+		msg.twist.angular.z = 0.0
 		msg.header.stamp = rospy.Time.now()
 		self.pub.publish(msg)
 		

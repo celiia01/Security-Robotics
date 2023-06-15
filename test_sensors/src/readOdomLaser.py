@@ -33,7 +33,18 @@ class TestNode:
 
 	MAXDISTANCE = AMAXW/2
 
-	SIZEROBOT = 0.15
+	SIZEROBOT = 0.2
+
+	VCHANGE = 0.05
+	WCHANGE = 15 * math.pi / 180.0
+
+	VBEF = 0.0
+	WBEF = 0.0
+
+	TRAYECTORIA_POSITIVA = False
+	TRAYECTORIA_EMPEZADA = False
+
+	BEFORE = []
 
 	def __init__(self):
 		self.lidar_sub = message_filters.Subscriber('base_scan', LaserScan)
@@ -49,7 +60,7 @@ class TestNode:
 		self.lock = Lock()
 		self.trayectoria_top = False
 		self.trayectoria_bottom = False
-		self.timeCall = 0.1
+		self.timeCall = 0.099
 		self.matrix = np.zeros((70,25))
 		self.locRobot = np.array([-4.5, -6, 0])
 		self.locObstacles = np.array([[-3.5, -6, 0]])
@@ -150,7 +161,7 @@ class TestNode:
 
 		newX, newY = 0,0
 
-		newTh = pos1[2] + w * dt
+		newTh = w * dt
 
 		if abs(w) > 0.001:
 			newX = (v/w) * np.sin(newTh)
@@ -174,319 +185,227 @@ class TestNode:
 		'''
 		return np.array([distance[0] * np.cos(distance[1]), distance[0] * np.sin(distance[1]), distance[1]])
 	
-	# Minimun Distance from the robot to the most proximate obstacle
-	'''
-	def dist(self, v: float, w: float, polarObstacle):
-
-		if(v == 0.7):
-			
-			print("v: ", v, ", w: ", w, ", polar: ", polarObstacle)
-
-
-		obstacle = self.polar2Cartesian(polarObstacle)
-
-
-		if(v == 0.7):
-			
-			print("obstacle: ", obstacle)
-
-
-		self.lock.acquire()
-		pos1 = self.locRobot
-		self.lock.release()
-
-		if(v == 0.7):
-			
-			print("pos1: ", pos1)
-
-		pos2 = self.nextPosition(v, w, pos1)
-
-		if(v == 0.7):
-			
-			print("pos2: ", pos2)
-
-
-		#Positions of the robot and the obstacle in the world
-		r1TR2 = self.hom(pos2)
-		wTR1 = self.hom(pos1)
-		r1TO = self.hom(obstacle)
-
-
-		#Position relative of the obstacle
-		r2TO = np.linalg.inv(r1TR2) @ r1TO
-
-		rXO = self.loc(r2TO)
-
-		if(v == 0.7):
-			
-			print("rXO: ", rXO)
-
-			wTR2 = wTR1 @ r1TR2
-
-			print("wXR2: ", self.loc(wTR2))
-
-		if rXO[1] == 0 and rXO[0] != 0:
-			# if w == -3.142: 
-			# 	print("y == 0: ", rXO[0])
-			return rXO[0], 1
-		elif rXO[0] == 0 and rXO[1] != 0:
-			# if w == -3.142: 
-			# 	print("x == 0: ", rXO[1])
-			return rXO[1], 1
-		else:
-			radius = (rXO[0]**2 + rXO[1]**2)/ (2 * rXO[1])
-			theta = math.atan2(2 * rXO[0] * rXO[1], rXO[0]**2 - rXO[1]**2)
-			if v == 0.7: 
-				print("radius: ", radius, "theta: ", theta)
-			return [radius * theta, 1] if radius > 0 else [radius * theta, -1]
-
-	def dist(self, v: float, w: float, polarObstacle):
-
-		maxW = -np.inf
-		minW = np.inf
-
-		minV = np.inf
-
-		# if(v == 0.7):
-			
-		# 	print("v: ", v, ", w: ", w, ", polar: ", polarObstacle)
-
-		cartesians = np.array([self.polar2Cartesian(d) for d in polarObstacle])
-
-
-		# if(v == 0.7):
-			
-		# print("obstacle: ", obstacle)
-
-
-		self.lock.acquire()
-		pos1 = self.locRobot
-		self.lock.release()
-
-		# if(v == 0.7):
-			
-		# 	print("pos1: ", pos1)
-
-		pos2 = self.nextPosition(v, w, pos1)
-
-		# if(v == 0.7):
-			
-		# 	print("pos2: ", pos2)
-
-		r = v/w if w != 0 else math.inf
-
-		for r1XO in cartesians:
-			#Positions of the robot and the obstacle in the world
-			r1TR2 = self.hom(pos2)
-			wTR1 = self.hom(pos1)
-			r1TO = self.hom(r1XO)
-
-
-			#Position relative of the obstacle
-			r2TO = np.linalg.inv(r1TR2) @ r1TO
-
-			rXO = self.loc(r2TO)
-
-			if(rXO[1] != 0):
-
-				radius = (rXO[0]**2 + rXO[1]**2)/ (2 * rXO[1])
-				theta = math.atan2(2 * rXO[0] * rXO[1], rXO[0]**2 - rXO[1]**2)
-
-				distance = radius * theta
-			else:
-				distance = rXO[1]
-				theta = rXO[2]
-				radius = rXO[1]
-
-
-			limitW = math.sqrt(2.0 * abs(distance) * self.AMAXW) * (-1 if radius < 0 else 1)
-			limitV = math.sqrt(2.0 * abs(distance) * self.AMAXV)
-
-			# dt = 0
-			# self.lock.acquire()
-			# dt = self.timeCall
-			# self.lock.release()
-
-			# limitW = theta / dt
-			# limitV = radius * limitW
-
-
-			if limitV < minV:
-				minV = limitV
-
-			if maxW < limitW:
-				maxW = limitW
-			if minW > limitW:
-				minW = limitW
-
 	
-		wForbidden = minW <= w and w <= maxW
-
-		if minW < 0 and maxW < 0 and w > 0:
-			return True
-		if minW > 0 and maxW > 0 and w < 0:
-			return True
-		
-		return v <= minV and not wForbidden
-
-
-		# r = v/w if w != 0 else math.inf
-
-		# if rXO[1] == 0 and rXO[0] != 0:
-		# 	# if w == -3.142: 
-		# 	# 	print("y == 0: ", rXO[0])
-		# 	if r == math.inf  and rXO[2] == 0:
-		# 		return True
-		# 	else:
-		# 		return False
-		# elif rXO[0] == 0 and rXO[1] != 0:
-		# 	# if w == -3.142: 
-		# 	# 	print("x == 0: ", rXO[1])
-
-		# 	if r == math.inf  and rXO[2] == 0:
-		# 		return True
-		# 	else:
-		# 		return False
-		# else:
-		# 	radius = (rXO[0]**2 + rXO[1]**2)/ (2 * rXO[1])
-		# 	theta = math.atan2(2 * rXO[0] * rXO[1], rXO[0]**2 - rXO[1]**2)
-
-		# 	# Distinct sing so the robot don't collide the obstacle
-		# 	if (r > 0 and radius < 0) or ( r < 0 and radius > 0):
-		# 		return True
-		# 	elif r > 0 and radius > 0 and r < radius :
-		# 		return True
-		# 	elif r < 0 and radius < 0 and r > radius :
-		# 		return True
-		# 	else:
-		# 		#print("v: ", v, ", w: ", w, ", radV/W: ", r, " rad: ", radius)
-		# 		if w == 0:
-		# 			return abs(theta) >  0.2
-				
-		# 		# dist = radius * theta
-
-		# 		# limitV = math.sqrt(2.0 * abs(dist) * self.AMAXV)
-		# 		# limitW = math.sqrt(2.0 * abs(dist) * self.AMAXW) * (-1 if radius < 0 else 1)
-
-		# 		# if w > 0 and limitW > 0:
-		# 		# 	return v <= limitV and w <= limitW
-		# 		# elif w < 0 and limitW < 0:
-		# 		# 	return v <= limitV and w >= limitW
-		# 		# else:
-		# 		# 	return False
-				
-		# 		return False
-		# if rXO[1] == 0 and rXO[0] != 0:
-		# 	# if w == -3.142: 
-		# 	print("y == 0: ", rXO[0])
-		# 	return rXO[0], 1
-		# elif rXO[0] == 0 and rXO[1] != 0:
-		# 	# if w == -3.142: 
-		# 	print("x == 0: ", rXO[1])
-		# 	return rXO[1], 1
-		# else:
-		# 	radius = (rXO[0]**2 + rXO[1]**2)/ (2 * rXO[1])
-		# 	theta = math.atan2(2 * rXO[0] * rXO[1], rXO[0]**2 - rXO[1]**2)
-		# 	return [radius * theta, 1] if radius > 0 else [radius * theta, -1]
-'''
+	# Minimun Distance from the robot to the most proximate obstacle
 	def dist(self, v, w, polar):
+		if len(polar) == 2 and polar[0][1] == np.deg2rad(-self.ANGLE_VISION / 2) and polar[1][1] == np.deg2rad(self.ANGLE_VISION / 2):
+			print("Behind", v, w)
+			return True
 		#POSITION ACTUAL
 		self.lock.acquire()
 		pos1 = self.locRobot
+		dt = self.timeCall
 		self.lock.release()
 		wTR1 = self.hom(pos1)
+		#print("v: ", v, "w: ", w, "......................................")
 
 		# CON V Y W SACO LA NUEVA POSICIÓN DONDE ESTARÁ EL ROBOT
 		pos2 = self.nextPosition(v, w, pos1)
 		r1TR2 = self.hom(pos2)
+		##print("pos1:  ", pos1, " pos2: ", pos2)
 
+		wTR2 = wTR1 @ r1TR2
+		wXR2 = self.loc(wTR2)
+		
+		obsAbajo = polar[0][1] < 0 and polar[len(polar) - 1][1] < 0
+		obsArriba = polar[0][1] > 0 and polar[len(polar) - 1][1] > 0
+		obsDelante = polar[0][1] <= 0 and polar[len(polar) - 1][1] >= 0
+
+		try:
+			ind = np.where(polar[:][1] == 0)
+			obsDelante = obsDelante and True
+		except:
+			obsDelante = False
+
+		#print(obsAbajo, obsArriba, obsDelante)
 		#PASO A COORDENADAS CARTESIANAS LAS COORDENADAS POLARES DE LOS OBSTACULOS
+
 		cartesians = np.array([self.polar2Cartesian(d) for d in polar])
+		#print("cart: ")
+		# for c in cartesians:
+		# 	r1TO = self.hom(c)
+		# 	wXO = self.loc(wTR1 @ r1TO)
+		# 	#print("wXO: ", wXO)
+
+		rad1 = -np.inf
+		rad2 =  np.inf
+
+		allRad, allThetas = [], []
+		allDistancesR2 = []
+
 
 		r = v/w if w != 0 else np.inf
-		rad1 = -np.inf
-		rad2 = np.inf
-		allRad = []
-		print("v: ", v, ", w: ", w, ", r: ", r)
-		#PARA CADA ELEMENTO DEL ARRAY DE CARTESIANS
-		for c in cartesians:
-			r1TO = self.hom(c)
 
+		for r1XO in cartesians:
+			r1TO = self.hom(r1XO)
 			# SACO LA POSICIÓN DEL OBSTACULO DEPENDIENDO DE LA NUEVA POSICIÓN DEL ROBOT
 			r2TO = np.linalg.inv(r1TR2) @ r1TO
 			r2XO = self.loc(r2TO)
+			theta = 0
+			# CALCULO EN LA POSICIÓN INICIAL QUE INTERVALOS DE VELOCIDADES PUEDEN SER TOMADAS
+			if r1XO[0] == 0 and r1XO[1] == 0:
+				radius = np.inf
+				distance = 0
+			#SI Y ES IGUAL A 0, NO  HAY ARCO 
+			elif r1XO[1] == 0:
+				radius = np.inf
+				distance = r1XO[0]
+			#SI X ES IGUAL A 0, NO HAY ARCO
+			elif r1XO[0] == 0:
+				radius = np.inf
+				distance = r1XO[1]
+			else:
+				#CALCULO EL RADIO Y LA THETA PARA ALCANZAR DICHA POSICIÓN
+				radius = ((r1XO[0]) ** 2 + (r1XO[1])**2) / (2 * r1XO[1])
+				theta = math.atan2((2 * r1XO[0] * r1XO[1]), (r1XO[0]**2 - r1XO[1]**2))
+				distance = radius * theta
+			
+					
+			if obsDelante:
+				if rad1 < radius:
+					rad1 = radius
+				if rad2 > radius:
+					rad2 = radius
+			elif obsArriba:
+				if distance < self.SIZEROBOT and w > 0:
+					return False
+				if rad1 < radius:
+					rad1 = radius
+				if rad2 > radius and radius >= 0:
+					rad2 = radius
+			elif obsAbajo:
+				if distance < self.SIZEROBOT and w < 0:
+					return False
+				if rad1 < radius and radius <= 0:
+					rad1 = radius
+				if rad2 > radius:
+					rad2 = radius
+
+			allRad.append([radius])
+			allThetas.append([theta])
 
 
+			# CALCULO LAS DISTANCIAS A LOS DIFERENTES PUNTOS DEL OBSTACULO EN LA SIGUIENTE POSICIÓN DEL ROBOT
 			if r2XO[0] == 0 and r2XO[1] == 0:
 				radius = np.inf
+				distance = 0
 			#SI Y ES IGUAL A 0, NO  HAY ARCO 
 			elif r2XO[1] == 0:
 				radius = np.inf
+				distance = r2XO[0] - self.SIZEROBOT
+
 			#SI X ES IGUAL A 0, NO HAY ARCO
 			elif r2XO[0] == 0:
 				radius = np.inf
+				distance = r2XO[1] - self.SIZEROBOT
 			else:
 				#CALCULO EL RADIO Y LA THETA PARA ALCANZAR DICHA POSICIÓN
 				radius = ((r2XO[0]) ** 2 + (r2XO[1])**2) / (2 * r2XO[1])
 				theta = math.atan2((2 * r2XO[0] * r2XO[1]), (r2XO[0]**2 - r2XO[1]**2))
-
-			if rad1 < radius:
-				rad1 = radius
-			if rad2 > radius:
-				rad2 = radius
-
-			allRad.append([radius])
-
-
-		arrayRad = np.asarray(allRad)
-
-		if rad2 < 0 and rad1 > 0:
-			newArrayr1 = np.where(arrayRad > 0, arrayRad, 100000)
-			rad1 = np.amin(newArrayr1)
-
-			rad1Forbidden = (r >= rad1) if r > 0 else rad1 >= r
-
-			newArrayr2 = np.where(arrayRad < 0, arrayRad, -100000)
-			rad2 = np.amax(newArrayr2)
-
-			rad2Forbidden = (rad2 >= r) if r < 0 else rad2 <= r
-
-			forbidden = rad1Forbidden and rad2Forbidden
-
-			return not forbidden
-		elif (rad2 > 0 and rad1 > 0) or (rad2 < 0 and rad1 < 0):
-			rad1Forbidden = r <= rad1
-			rad2Forbidden = r >= rad2
-
-			forbidden = rad1Forbidden and rad2Forbidden
+				distance = (radius * theta) - self.SIZEROBOT
+			
+			if distance < 0 and ((obsDelante and ( (radius > 0 and w > 0) or (radius < 0 and w < 0) or w == 0))
+									or (obsAbajo and w < 0) or (obsArriba and w > 0)):
+				return False
+	
+			allDistancesR2.append([distance])
 
 
-			return not forbidden
-		else: 
-			print("WARNING!!!!!!!!!!!!!!!!!!!!!!: r1: ", rad1,", r2: ", rad2)
-			return False
+		if len(allRad) > 0:
+			arrayRad = np.asarray(allRad)
+			arrayDist = np.asarray(allDistancesR2)
+			arrayDist = np.where(arrayDist >= 0, arrayDist, 100000)
+			minorDistance = np.amin(arrayDist)
+
+			#EL OBSTACULO ESTA DELANTE, PASA EL INF POR MEDIO
+			if obsDelante:
+				if math.sqrt(2.0 * minorDistance * self.AMAXV) < v:
+					return False
+				
+				forbidden = math.sqrt(2.0*minorDistance*self.AMAXV)
+
+				newArrayr1 = np.where(arrayRad > 0, arrayRad, 100000)
+				rad1 = np.amin(newArrayr1) - self.SIZEROBOT
+				
+				rad1Forbidden = (r >= rad1) if r > 0 else rad1 >= r
+
+				newArrayr2 = np.where(arrayRad < 0, arrayRad, -100000)
+				rad2 = np.amax(newArrayr2) + self.SIZEROBOT
+
+				rad2Forbidden = (rad2 >= r) if r < 0 else rad2 <= r
 
 
-		print("FIN DE PRUEBA--------------------------------------------------------------------------------")
+				forbidden = rad1Forbidden and rad2Forbidden
+
+				if forbidden and minorDistance != 100000:
+					forbidden = ((minorDistance - self.AMAXV* dt) / 2) < v
 
 
+			#EL OBSTACULO ESTA ABAJO
+			elif obsAbajo:
+				# print("ABAJO")
+				if w >= 0:
+					#print("w pos and rad neg: ", w, ", rad1: ", rad1, ", rad2: ", rad2)
+					return True
+		
+				else:
+					if math.sqrt(2.0 * minorDistance * self.AMAXV) < v:
+						return False
+					#print("rad1: ", rad1, " rad2: ", rad2, " r: ", r)
+					if rad1 < 0:
+						rad1 = (rad1 + self.SIZEROBOT) if (rad1 + self.SIZEROBOT) <= 0 else 0
+					else: 
+						rad1 = (rad1 - self.SIZEROBOT) if (rad1 - self.SIZEROBOT) >= 0 else 0
+				
+					rad2 = (rad2 - self.SIZEROBOT) if rad2 < 0 else (rad2 + self.SIZEROBOT)
+					
+					rad1Forbidden = r <= rad1
+					rad2Forbidden = r >= rad2
+
+					#print("forb1: ", rad1Forbidden, " forb2: ", rad2Forbidden)
+
+
+				forbidden = rad1Forbidden and rad2Forbidden
+
+				if forbidden and minorDistance != 100000:
+					forbidden = ((minorDistance - self.AMAXV* dt) / 2) < v
+			elif obsArriba:
+				# print("ARRIBA")
+				if w <= 0:
+					#print("w neg and rad pos: ", w, " rad1: ", rad1, " rad2: ", rad2)
+					return True
+				
+				else:
+					if math.sqrt(2.0 * minorDistance * self.AMAXV) < v:
+						return False
+					#print("rad1: ", rad1, " rad2: ", rad2, " r: ", r)
+					
+					rad1 = (rad1 - self.SIZEROBOT) if (rad1 - self.SIZEROBOT) >= 0 else 0
+				
+					rad2 = (rad2 + self.SIZEROBOT)
+					
+					#print("rad1: ", rad1, ", rad2: ", rad2, " r: ", r, " v: ", v, ", w: ", w)
+					rad1Forbidden = r >= rad1
+					rad2Forbidden = r <= rad2
+
+					#print("forb1: ", rad1Forbidden, " forb2: ", rad2Forbidden)
+
+
+				forbidden = rad1Forbidden and rad2Forbidden
+
+				if forbidden and minorDistance != 100000:
+					forbidden = ((minorDistance - self.AMAXV* dt) / 2) < v
+
+			else:
+				print("WARNING|||1, ", v, ", ", w)
+				print("distances: ", polar)
+		# print("forb: ", forbidden)
+		# input("wait")	
+		return not forbidden
+		
+			
 
 	def restrictionDWA(self, v, w, admissible, limitVLow, limitVUp, limitWLow, limitWUp):
-		# Admissible velocities
-		# v <= (2 * distance(v, w) * vb ) ^ 1/2
-		# w <= (2 * distance(v,w) * wb ) ^ 1/2
-
-		# limitV = math.sqrt(2.0 * abs(distance) * self.AMAXV)
-		# limitW = math.sqrt(2.0 * abs(distance) * self.AMAXW) * sign
-
-		# admissible = True and v <= limitV
-		# if limitW >= 0 and w > 0:
-		# 	admissible = w <= limitW and v <= limitV
-		# elif limitW < 0 and w < 0:
-		# 	admissible = w >= limitW and v <= limitV
-
-		# if (v == 0 and w > 0):
-		# 	print("V: ", v, " limitV: ", limitV, " w: ", w, " limitW: ",limitW, " distance: ", distance )
 
 		# Feasible velocities
 		# if (v >= limitVLow and v <= limitVUp and w >= limitWLow and w <= limitWUp and v <= limitV and admissible):
@@ -505,11 +424,11 @@ class TestNode:
 	
 
 	def velocities(self, vAct: float, wAct: float, scan_sub: np.array):
-		vChange = 0.05
-		wChange = 15 * math.pi / 180.0
+		self.VCHANGE = 0.05
+		self.WCHANGE = 15 * math.pi / 180.0
 
-		x = int(round((self.VMAX - self.VMIN) / vChange, 0)) + 1
-		y = int(round((self.WMAX - self.WMIN) / wChange, 0)) + 1
+		x = int(round((self.VMAX - self.VMIN) / self.VCHANGE, 0)) + 1
+		y = int(round((self.WMAX - self.WMIN) / self.WCHANGE, 0)) + 1
 		# print("x: ", x, ", y: ", y)
 		dWA = np.zeros([x,y])
 		posibilities = np.ones([x, y])
@@ -525,9 +444,9 @@ class TestNode:
 
 		obstacle = False
 
-		for v in np.arange(self.VMAX, self.VMIN -vChange, -vChange):
+		for v in np.arange(self.VMAX, self.VMIN -self.VCHANGE, -self.VCHANGE):
 			v = 0 if v > 0 and v < 0.01 else round(v, 2)
-			for w in np.arange(self.WMIN, self.WMAX + wChange, wChange):
+			for w in np.arange(self.WMIN, self.WMAX + self.WCHANGE, self.WCHANGE):
 				w = 0 if abs(w) < 0.001 and abs(w) > 0 else round(w,3)
 				obstacle = False
 				if v != 0 and len(scan_sub) != 0:
@@ -541,8 +460,9 @@ class TestNode:
 
 					# if distance == 0.0 or not ((sign == -1 and w > 0) or (sign == 1 and w < 0)):
 					#admissible = self.dist(v,w,scan_sub)
+					t3 = time.clock_gettime(time.CLOCK_REALTIME)
 					admissible = self.dist(v,w,scan_sub)
-					t4 = time.clock_gettime(time.CLOCK_REALTIME)
+					t4 = time.clock_gettime(time.CLOCK_REALTIME) - t3
 					num = self.restrictionDWA(v, w, admissible, limitVLow, limitVUp, limitWLow, limitWUp)
 					
 
@@ -581,7 +501,6 @@ class TestNode:
 				# Actual Velocity
 				if (v == vAct and w == wAct):
 					dWA[i][j] = self.ACTUAL
-				
 				j += 1
 					
 
@@ -591,6 +510,7 @@ class TestNode:
 		self.matrix = dWA
 		self.lock.release()
 		t2 = time.clock_gettime(time.CLOCK_REALTIME) - t1
+		#print("vel: ", dWA[8][12], " pos: ", posibilities[8][12])
 		#self.timeCall = t2
 		# print(t2)
 		#print("														FIN--------------------------------------------")
@@ -602,16 +522,16 @@ class TestNode:
 
 	def plotDWA(self):
 		fig, ax = plt.subplots()
-		wChange = (2 * math.pi) / 5
+		self.WCHANGE = (2 * math.pi) / 5
 
 		y = np.arange(0.8,-0.1, -0.1)
 		y = np.round(y, 2)
-		x = np.arange(-np.pi-wChange, np.pi+wChange, wChange)
+		x = np.arange(-np.pi-self.WCHANGE, np.pi+self.WCHANGE, self.WCHANGE)
 		x = np.round(x, 3)
 
 		while(True):
 			# self.lock.acquire()
-			#print("								hola ")
+			# print("								 mat[8][12]: ", self.matrix[8][12])
 			# self.lock.release()
 			ax.set_title("DWA")
 
@@ -634,20 +554,33 @@ class TestNode:
 		'''
 			Search the most proximate velocities to the desired velocities
 		'''
-		line = int(np.round((self.VMAX - desired_v), 2) / 0.05)
-		colDec = ( desired_w + self.WMAX) * 180 / (5 * math.pi)
+		line = int(np.round((self.VMAX - desired_v) / self.VCHANGE))
+		lineBef = int(np.round((self.VMAX - self.VBEF) / self.VCHANGE))
+		colDec = ( desired_w + self.WMAX) / self.WCHANGE
 		col = int(np.round(colDec))
+		colDecBef = ( self.WBEF + self.WMAX) / self.WCHANGE
+		colBef = int(np.round(colDecBef))
 		h,w = posibilities.shape
 		ind = np.array([0,0])
 		vRet, wRet, indv, indw = 0, 0, 0, 0
 		minLine, minCol, maxCol, maxLine = 0, 0, 0, 0 
 		found = False
-
+		wind = 0
+	
+		#print("line: ", line, " lineBEf: ", lineBef, ", col: ", col, " colBef: ", colBef)
 		if posibilities[line][col] == 0:
+
+			# if posibilities[lineBef][colBef] == 1:
+			# 	found = True
+
+			# line = lineBef
+			# colDec = colDecBef
+			# col = colBef
 			
 			wind = 1
 
 			while not found and (minLine != 0 or maxLine != h + 1 or minCol != 0 or maxCol != w + 1):
+				#print("entro")
 				#Window with 2 * wind + 1 x 2 * wind + 1
 				minLine = line - wind if line - wind >= 0 else 0
 				maxLine = line + wind + 1 if line + wind <= h else h + 1
@@ -659,17 +592,23 @@ class TestNode:
 
 				try:
 					ind = np.where(newPos==1)
-					indv = ind[0][0] - wind
-					indw = ind[1][0] - wind
+					#print(ind)
+					indv = ind[0][0] - ( wind if wind < line else 0)
+					indw = ind[1][0] - ( wind if wind < col else 0)
 					found = True
 				except:
 					wind += 1
 		else:
+			#print("DESIRED TRUE")
 			found = True
 
 		if found:
-			vRet = np.round((self.VMAX - (line + indv) * 0.05), 2)
-			wRet = np.round((self.WMAX - ((colDec + indw) * 15 * math.pi / 180.0) ), 3)
+			lineRet = (line + indv) if wind < line  else indv
+			colRet = (colDec + indw) if wind < col else indw
+			vRet = np.round((self.VMAX - lineRet * self.VCHANGE), 2)
+			wRet = np.round(((colRet * self.WCHANGE) - self.WMAX), 3)
+
+			#print("line: ", lineRet , ", col: ", colRet)
 
 		return vRet, wRet
 
@@ -678,6 +617,8 @@ class TestNode:
 	def callback(self, scan: LaserScan, odom: Odometry, desired_vel: TwistStamped):
 		# print("						callback: ", scan.ranges[540])
 		t5 = time.clock_gettime(time.CLOCK_REALTIME)
+		# if scan.ranges != self.BEFORE:
+		
 		x = odom.pose.pose.position.x
 		y = odom.pose.pose.position.y
 		th = odom.pose.pose.orientation.z
@@ -695,6 +636,8 @@ class TestNode:
 		self.lock.release()
 
 		while not wake:
+			self.VBEF = desired_v
+			self.WBEF = desired_w
 			self.lock.acquire()
 			wake = self.wake
 			self.lock.release()
@@ -702,6 +645,9 @@ class TestNode:
 
 		distance = 0.65
 		scan_ranges = np.array(scan.ranges)
+		# print(scan.ranges)
+		# print("BEF: ", self.BEFORE)
+		# print(scan.ranges == self.BEFORE)
 		middle = np.array(scan_ranges[478:600])
 		top = np.array(scan_ranges[601:])
 		bottom = np.array(scan_ranges[:477])
@@ -711,32 +657,44 @@ class TestNode:
 		# print("										>",scan_ranges[540])
 
 		th = np.arange(-self.ANGLE_VISION/2, self.ANGLE_VISION/2 + distanceAngles, distanceAngles)
-		 
+		
 
 		scan_sub = np.array([[np.amin(scan_ranges[(k-10):k]), th[int((k/10) - 1)]] for k in np.arange(10, len(scan_ranges) + 19, 10)])
 
 		scan_deletes = []
+		last_deg = -self.ANGLE_VISION/2
+		# for s in scan_sub:
+		# 	if s[0] - self.SIZEROBOT<= self.MAXDISTANCE:
+		# 		scan_deletes += [[s[0] - self.SIZEROBOT, np.deg2rad(s[1])]]
 
 		for s in scan_sub:
-			if s[0]  - self.SIZEROBOT <= self.MAXDISTANCE:
-				scan_deletes += [[s[0]  - self.SIZEROBOT, np.deg2rad(s[1])]]
+			if s[0] - self.SIZEROBOT<= self.MAXDISTANCE:
+				scan_deletes += [[s[0] - self.SIZEROBOT, np.deg2rad(s[1])]]
 
-		# print("scan_deletes: ")
-		# print(scan_deletes)
-			
-		wChange = (5 * math.pi)/180.0
-		vChange = 0.05
+		print("scan_deletes: ")
+		print(scan_deletes)
+		
 
 
 		posibilities = TestNode.velocities(self, vAct, wAct, scan_deletes)
 
 
-		#v, w = TestNode.searchVelocities(self, desired_v, desired_w, posibilities)
+		v, w = TestNode.searchVelocities(self, desired_v, desired_w, posibilities)
+		print("v: ", v, ", w: ",w )
+		self.VBEF = v
+		self.WBEF = w
+
+		# v = desired_v
+		# w = desired_w
 
 		# v, w = TestNode.skipObstacle(self,scan_ranges, middle, top, bottom, desired_v, desired_w, distance)																																																				
-		
-		v = desired_v
-		w = desired_w
+		# print("t5: ", time.clock_gettime(time.CLOCK_REALTIME) - t5)
+		self.BEFORE = scan.ranges
+		# else:
+		# 	v = self.VBEF
+		# 	w = self.WBEF
+			# print("t5: ", time.clock_gettime(time.CLOCK_REALTIME) - t5)
+		#input("continue")
 		self.send_vel(v,w)
 		#rospy.loginfo(rospy.get_caller_id() + "Min range %f", np.minimum(scan_ranges))
 
