@@ -14,8 +14,10 @@ from multiprocessing import Lock, Process
 
 
 class TestNode:
+	# Angle vision of the LaserScan
 	ANGLE_VISION = 270
 
+	# Types of velocities
 	FORBIDEN = 1
 	DYNAMIC_WINDOW = 2
 	FEASIBLE = 3
@@ -31,19 +33,20 @@ class TestNode:
 	WMAX = math.pi
 	WMIN = -math.pi
 
+	# Maximum distance for possible collision
 	MAXDISTANCE = AMAXW/2
 
-	SIZEROBOT = 0.15
+	SIZEROBOT = 0.17
 
+	# Value of the difference between the velocities chosen
 	VCHANGE = 0.05
 	WCHANGE = 15 * math.pi / 180.0
 
+	# Pair of previous speeds
 	VBEF = 0.0
 	WBEF = 0.0
 
-	TRAYECTORIA_POSITIVA = False
-	TRAYECTORIA_EMPEZADA = False
-
+	# List of previous distances obtainded by the LaserScan
 	BEFORE = []
 
 	def __init__(self):
@@ -60,7 +63,7 @@ class TestNode:
 		self.lock = Lock()
 		self.trayectoria_top = False
 		self.trayectoria_bottom = False
-		self.timeCall = 0.099
+		self.timeCall = 0.2
 		self.matrix = np.zeros((70,25))
 		self.locRobot = np.array([-4.5, -6, 0])
 		self.wake = False
@@ -131,23 +134,6 @@ class TestNode:
 		self.lock.release()
 
 		return v,w
-	
-	# #Next Position of the robot in the world with the velocities v and w
-	# def nextPosition(self, v: float, w: float, pos1):
-	# 	self.lock.acquire()
-	# 	dt = self.timeCall
-	# 	self.lock.release()
-	# 	newX, newY, newTh = 0.0, 0.0, 0.0
-
-	# 	if abs(w) > 0.001:
-	# 		newX = pos1[0] + (v / w) * (np.sin(pos1[2] + w * dt) - np.sin(pos1[2]))
-	# 		newY = pos1[1] + (v / w) * (np.cos(pos1[2] + w * dt) - np.cos(pos1[2]))
-	# 		newTh = pos1[2] + w * dt
-	# 	else:
-	# 		newX = pos1[0] + dt * v * np.cos(pos1[2])
-	# 		newY = pos1[1] + dt * v * np.sin(pos1[2])
-	# 		newTh = pos1[2] + w * dt
-	# 	return np.array([newX, newY, newTh])
 
 	def nextPosition(self, v: float, w: float, pos1):
 		'''
@@ -183,15 +169,13 @@ class TestNode:
 		'''
 		return np.array([distance[0] * np.cos(distance[1]), distance[0] * np.sin(distance[1]), distance[1]])
 	
-	
-	# Minimun Distance from the robot to the most proximate obstacle
-	def dist(self, v, w, polar):
+
+	def velocityAdmissible(self, v, w, polar):
 		'''
 			Return TRUE if the pair of velocities (v,w) are admissible for the obstacle, 
 			else FALSE
 		'''
 		if len(polar) == 2 and polar[0][1] == np.deg2rad(-self.ANGLE_VISION / 2) and polar[1][1] == np.deg2rad(self.ANGLE_VISION / 2):
-			print("Behind", v, w)
 			return True
 		#POSITION ACTUAL
 		self.lock.acquire()
@@ -203,19 +187,21 @@ class TestNode:
 		pos2 = self.nextPosition(v, w, pos1)
 		r1TR2 = self.hom(pos2)
 
-		
+		# LOCALIZAR SI EL OBSTACULO ESTA ABAJO, ARRIBA O DELANTE
 		obsDown = polar[0][1] < 0 and polar[len(polar) - 1][1] < 0
 		obsUp = polar[0][1] > 0 and polar[len(polar) - 1][1] > 0
 		obsInFront = polar[0][1] <= 0 and polar[len(polar) - 1][1] >= 0
 
 		try:
-			ind = np.where(polar[:][1] == 0)
+			np.where(polar[:][1] == 0)
 			obsInFront = obsInFront and True
 		except:
 			obsInFront = False
 
 		#PASO A COORDENADAS CARTESIANAS LAS COORDENADAS POLARES DE LOS OBSTACULOS
 		cartesians = np.array([self.polar2Cartesian(d) for d in polar])
+		# if v == 0.05 and abs(w) == 0.262:
+		# 	print(cartesians)
 		rad1 = -np.inf
 		rad2 =  np.inf
 
@@ -231,6 +217,7 @@ class TestNode:
 			r2TO = np.linalg.inv(r1TR2) @ r1TO
 			r2XO = self.loc(r2TO)
 			theta = 0
+
 			# CALCULO EN LA POSICIÓN INICIAL QUE INTERVALOS DE VELOCIDADES PUEDEN SER TOMADAS
 			if r1XO[0] == 0 and r1XO[1] == 0:
 				radius = np.inf
@@ -245,30 +232,37 @@ class TestNode:
 				distance = r1XO[1]
 			else:
 				#CALCULO EL RADIO Y LA THETA PARA ALCANZAR DICHA POSICIÓN
-				radius = ((r1XO[0]) ** 2 + (r1XO[1])**2) / (2 * r1XO[1])
+				radius = ((r1XO[0])**2 + (r1XO[1])**2) / (2 * r1XO[1])
 				theta = math.atan2((2 * r1XO[0] * r1XO[1]), (r1XO[0]**2 - r1XO[1]**2))
 				distance = abs(radius * theta)
 			
-					
+			# if v == 0.05 and abs(w) == 0.262:
+			# 	print(radius)
+			
+			#DEPENDIENDO DE LA POSICIÓN DEL ROBOT OBTENGO EL MAYOR Y EL MENOR RADIO	
 			if obsInFront:
 				if rad1 < radius:
 					rad1 = radius
 				if rad2 > radius:
 					rad2 = radius
 			elif obsUp:
-				if distance < self.SIZEROBOT and w > 0:
-					return False
+				# #EL OBSTACULO ESTÁ MUY CERCA
+				# if distance < self.SIZEROBOT and w >= 0:
+				# 	return False
 				if rad1 < radius:
 					rad1 = radius
 				if rad2 > radius and radius >= 0:
 					rad2 = radius
 			elif obsDown:
-				if distance < self.SIZEROBOT and w < 0:
-					return False
+				# # EL OBSTACULO ESTA MUY CERCA
+				# if distance < self.SIZEROBOT and w <= 0:
+				# 	return False
 				if rad1 < radius and radius <= 0:
 					rad1 = radius
 				if rad2 > radius:
 					rad2 = radius
+
+					
 
 			allRad.append([radius])
 			allThetas.append([theta])
@@ -293,12 +287,13 @@ class TestNode:
 				theta = math.atan2((2 * r2XO[0] * r2XO[1]), (r2XO[0]**2 - r2XO[1]**2))
 				distance = abs(radius * theta) - self.SIZEROBOT
 			
+			# EN EL SIGUIENTE MOVIMIENTO EL OBSTACULO ESTÁ MUY CERCA, DEPENDIENDO DEL RADIO O DE LA VELOCIDAD ANGULAR
+			# SE DEVUELVE QUE NO ES ADMISIBLE POR ACERCARSE AL OBSTACULO
 			if distance < 0 and ((obsInFront and ( (radius > 0 and w > 0) or (radius < 0 and w < 0) or w == 0))
 									or (obsDown and w < 0) or (obsUp and w > 0)):
 				return False
 	
 			allDistancesR2.append([distance])
-
 
 		if len(allRad) > 0:
 			arrayRad = np.asarray(allRad)
@@ -309,18 +304,27 @@ class TestNode:
 
 			#THE OBSTACLE IS IN FRONT THE ROBOT
 			if obsInFront:
+				# if v == 0.05 and abs(w) == 0.262:
+				# 	print("w: ", w, " minor: ", minorDistance)
 				if math.sqrt(2.0 * minorDistance * self.AMAXV) < v:
 					return False
 
 				newArrayr1 = np.where(arrayRad > 0, arrayRad, 100000)
 				rad1 = np.amin(newArrayr1) - self.SIZEROBOT
+				# if v == 0.05 and abs(w) == 0.262:
+				# 	print("r1b: ", np.amin(newArrayr1))
 				
 				rad1Forbidden = (r >= rad1) if r > 0 else rad1 >= r
 
 				newArrayr2 = np.where(arrayRad < 0, arrayRad, -100000)
 				rad2 = np.amax(newArrayr2) + self.SIZEROBOT
+				# if v == 0.05 and abs(w) == 0.262:
+				# 	print("r2b: ", np.amax(newArrayr2))
 
 				rad2Forbidden = (rad2 >= r) if r < 0 else rad2 <= r
+
+				# if v == 0.05 and abs(w) == 0.262:
+				# 	print("w: ", w, " r1: ", rad1, " f1: ", rad1Forbidden, " RAD2: ", rad2, " f2: ", rad2Forbidden)
 
 				forbidden = rad1Forbidden and rad2Forbidden
 
@@ -332,6 +336,7 @@ class TestNode:
 			elif obsDown:
 				if w >0:
 					return True
+				# SI W == 0 MIRO SI EL MENOR ANGULO DE AMBOS SIGNOS ES MAYOR QUE EL MENOR VALOR DE W 
 				if w == 0:
 					arrayThetaPos = np.where(arrayTh >= 0, arrayTh, 100000)
 					minorThetaPos = np.amin(arrayThetaPos)
@@ -339,8 +344,8 @@ class TestNode:
 					arrayThetaNeg = np.where(arrayTh <= 0, arrayTh, -100000)
 					minorThetaNeg = np.amax(arrayThetaNeg)
 
-
-					return minorThetaNeg < -self.WCHANGE and minorThetaPos > self.WCHANGE
+					# print("minorNeg: ", minorThetaNeg, ", minorPos: ", minorThetaPos)
+					return minorThetaNeg < (-self.WCHANGE - self.SIZEROBOT) and minorThetaPos > (self.WCHANGE + self.SIZEROBOT)
 		
 				else:
 					if math.sqrt(2.0 * minorDistance * self.AMAXV) < v:
@@ -353,6 +358,9 @@ class TestNode:
 					rad1Forbidden = r <= rad1
 					rad2Forbidden = r >= rad2
 
+					# if v == 0.05 and abs(w) == 0.262:
+					# 	print("Down r1: ", rad1, " rad2: ", rad2)
+
 
 				forbidden = rad1Forbidden and rad2Forbidden
 
@@ -362,6 +370,7 @@ class TestNode:
 			elif obsUp:
 				if w < 0:
 					return True
+				# SI W == 0 MIRO SI EL MENOR ANGULO DE AMBOS SIGNOS ES MAYOR QUE EL MENOR VALOR DE W 
 				if w == 0:
 					arrayThetaPos = np.where(arrayTh >= 0, arrayTh, 100000)
 					minorThetaPos = np.amin(arrayThetaPos)
@@ -369,7 +378,8 @@ class TestNode:
 					arrayThetaNeg = np.where(arrayTh <= 0, arrayTh, -100000)
 					minorThetaNeg = np.amax(arrayThetaNeg)
 
-					return minorThetaNeg < -self.WCHANGE and minorThetaPos > self.WCHANGE
+					# print("minorNeg: ", minorThetaNeg, ", minorPos: ", minorThetaPos)
+					return minorThetaNeg < (-self.WCHANGE - self.SIZEROBOT) and minorThetaPos > (self.WCHANGE + self.SIZEROBOT)
 
 				
 				else:
@@ -382,6 +392,9 @@ class TestNode:
 
 					rad1Forbidden = r >= rad1
 					rad2Forbidden = r <= rad2
+
+					# if v == 0.05 and abs(w) == 0.262:
+					# 	print("UP: r1: ", rad1, " rad2: ", rad2)
 
 
 				forbidden = rad1Forbidden and rad2Forbidden
@@ -449,12 +462,11 @@ class TestNode:
 					t3 = time.clock_gettime(time.CLOCK_REALTIME)
 					obstacle = True
 
-					t3 = time.clock_gettime(time.CLOCK_REALTIME)
 					admissible = True
 					for obs in scan_sub:
-						admissible = admissible and self.dist(v,w,obs)
-	
-					t4 = time.clock_gettime(time.CLOCK_REALTIME) - t3
+						admissible = admissible and self.velocityAdmissible(v,w,obs)
+						
+					# t4 = time.clock_gettime(time.CLOCK_REALTIME) - t3
 					num = self.restrictionDWA(v, w, admissible, limitVLow, limitVUp, limitWLow, limitWUp)
 					
 
@@ -468,7 +480,7 @@ class TestNode:
 						
 						posibilities[i][j] = 0
 
-					t4 = time.clock_gettime(time.CLOCK_REALTIME) - t3
+					# t4 = time.clock_gettime(time.CLOCK_REALTIME) - t3
 
 				if not obstacle:
 
@@ -507,11 +519,10 @@ class TestNode:
 
 	def plotDWA(self):
 		fig, ax = plt.subplots()
-		self.WCHANGE = (2 * math.pi) / 5
 
 		y = np.arange(0.8,-0.1, -0.1)
 		y = np.round(y, 2)
-		x = np.arange(-np.pi-self.WCHANGE, np.pi+self.WCHANGE, self.WCHANGE)
+		x = np.arange(-np.pi-(5*self.WCHANGE), np.pi+(5*self.WCHANGE), 5*self.WCHANGE)
 		x = np.round(x, 3)
 
 		while(True):
@@ -535,67 +546,6 @@ class TestNode:
 			self.lock.release()
 			time.sleep(0.001)
 
-	# def searchVelocities(self, desired_v: float, desired_w: float, posibilities: np.array):
-	# 	'''
-	# 		Search the most proximate velocities to the desired velocities
-	# 	'''
-	# 	line = int(np.round((self.VMAX - desired_v) / self.VCHANGE))
-	# 	lineBef = int(np.round((self.VMAX - self.VBEF) / self.VCHANGE))
-	# 	colDec = ( desired_w + self.WMAX) / self.WCHANGE
-	# 	col = int(np.round(colDec))
-	# 	colDecBef = ( self.WBEF + self.WMAX) / self.WCHANGE
-	# 	colBef = int(np.round(colDecBef))
-	# 	h,w = posibilities.shape
-	# 	ind = np.array([0,0])
-	# 	vRet, wRet, indv, indw = 0, 0, 0, 0
-	# 	minLine, minCol, maxCol, maxLine = 0, 0, 0, 0 
-	# 	found = False
-	# 	wind = 0
-	
-	# 	#print("line: ", line, " lineBEf: ", lineBef, ", col: ", col, " colBef: ", colBef)
-	# 	if posibilities[line][col] == 0:
-
-	# 		# if posibilities[lineBef][colBef] == 1:
-	# 		# 	found = True
-
-	# 		# line = lineBef
-	# 		# colDec = colDecBef
-	# 		# col = colBef
-			
-	# 		wind = 1
-
-	# 		while not found and (minLine != 0 or maxLine != h + 1 or minCol != 0 or maxCol != w + 1):
-	# 			#print("entro")
-	# 			#Window with 2 * wind + 1 x 2 * wind + 1
-	# 			minLine = line - wind if line - wind >= 0 else 0
-	# 			maxLine = line + wind + 1 if line + wind <= h else h + 1
-	# 			minCol = col - wind if col - wind >= 0 else 0
-	# 			maxCol = col + wind + 1 if col + wind <= w else w + 1
-
-
-	# 			newPos = posibilities[minLine : maxLine, minCol: maxCol]
-
-	# 			try:
-	# 				ind = np.where(newPos==1)
-	# 				#print(ind)
-	# 				indv = ind[0][0] - ( wind if wind < line else 0)
-	# 				indw = ind[1][0] - ( wind if wind < col else 0)
-	# 				found = True
-	# 			except:
-	# 				wind += 1
-	# 	else:
-	# 		#print("DESIRED TRUE")
-	# 		found = True
-
-	# 	if found:
-	# 		lineRet = (line + indv) if wind < line  else indv
-	# 		colRet = (colDec + indw) if wind < col else indw
-	# 		vRet = np.round((self.VMAX - lineRet * self.VCHANGE), 2)
-	# 		wRet = np.round(((colRet * self.WCHANGE) - self.WMAX), 3)
-
-	# 		#print("line: ", lineRet , ", col: ", colRet)
-
-	# 	return vRet, wRet
 
 	def searchVelocities(self, desired_v: float, desired_w: float, posibilities: np.array):
 		'''
@@ -725,8 +675,6 @@ class TestNode:
 	def callback(self, scan: LaserScan, odom: Odometry, desired_vel: TwistStamped):
 		# print("						callback: ", scan.ranges[540])
 		t5 = time.clock_gettime(time.CLOCK_REALTIME)
-		# if scan.ranges != self.BEFORE:
-		
 		x = odom.pose.pose.position.x
 		y = odom.pose.pose.position.y
 		th = odom.pose.pose.orientation.z
@@ -735,10 +683,13 @@ class TestNode:
 		# Desired Velocities
 		desired_v = desired_vel.twist.linear.x																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																							
 		desired_w = desired_vel.twist.angular.z
-		# Actual Velocities (deseada)
-		vAct = odom.twist.twist.linear.x if odom.twist.twist.linear.x > 0.0 or odom.twist.twist.linear.x < 0.0 else desired_v
-		wAct = odom.twist.twist.angular.z if odom.twist.twist.angular.z > 0.0 or odom.twist.twist.angular.z < 0.0 else desired_w
+		# if scan.ranges != self.BEFORE:
 		
+		# Actual Velocities (deseada)
+		# vAct = odom.twist.twist.linear.x if odom.twist.twist.linear.x > 0.0 or odom.twist.twist.linear.x < 0.0 else desired_v
+		# wAct = odom.twist.twist.angular.z if odom.twist.twist.angular.z > 0.0 or odom.twist.twist.angular.z < 0.0 else desired_w
+		
+		#Wait until the another thread is wake
 		self.lock.acquire()
 		wake = self.wake
 		self.lock.release()
@@ -751,7 +702,8 @@ class TestNode:
 			self.lock.release()
 			time.sleep(0.1)
 
-		distance = 0.65
+		#distance = 0.65
+		# Save the distances that the LaserScan catch
 		scan_ranges = np.array(scan.ranges)
 		# print(scan.ranges)
 		# print("BEF: ", self.BEFORE)
@@ -766,36 +718,37 @@ class TestNode:
 
 		th = np.arange(-self.ANGLE_VISION/2, self.ANGLE_VISION/2 + distanceAngles, distanceAngles)
 		
-
+		# Create a array with the minimum distance of the 10 positions and add the angle 
 		scan_sub = np.array([[np.amin(scan_ranges[(k-10):k]), th[int((k/10) - 1)]] for k in np.arange(10, len(scan_ranges) + 19, 10)])
-
+		# print(scan_sub)
 		scan_deletes, newObs = [], []
 		last_deg = -self.ANGLE_VISION/2
 		begin = False
-		# for s in scan_sub:
-		# 	if s[0] - self.SIZEROBOT<= self.MAXDISTANCE:
-		# 		scan_deletes += [[s[0] - self.SIZEROBOT, np.deg2rad(s[1])]]
 
+		# Subdivide the last array depend on the number of obstacles looked
 		for s in scan_sub:
+			# If the distance is 
 			if s[0] - self.SIZEROBOT<= self.MAXDISTANCE:
 				if not begin:
 					newObs = []
 					begin = True
-				newObs += [[s[0] - self.SIZEROBOT, np.deg2rad(s[1])]]
+				newObs += [[s[0] , np.deg2rad(s[1])]]
 			else:
 				if begin:
 					scan_deletes += [newObs]
 					begin = False
 
-		if len(newObs) > 0:
+		if len(newObs) > 0 and begin:
 			scan_deletes += [newObs]
+
 		
-
-
+		t6 = time.clock_gettime(time.CLOCK_REALTIME)
 		posibilities = TestNode.velocities(self, self.VBEF, self.WBEF, scan_deletes)
-
-
+		# print("t6: ", time.clock_gettime(time.CLOCK_REALTIME) - t6)
+		
+		#t6 = time.clock_gettime(time.CLOCK_REALTIME)
 		v, w = TestNode.searchVelocities(self, desired_v, desired_w, posibilities)
+		#print("t7: ", time.clock_gettime(time.CLOCK_REALTIME) - t6)
 		print("v: ", v, ", w: ",w )
 		self.VBEF = v
 		self.WBEF = w
@@ -805,12 +758,12 @@ class TestNode:
 
 		# v, w = TestNode.skipObstacle(self,scan_ranges, middle, top, bottom, desired_v, desired_w, distance)																																																				
 		# print("t5: ", time.clock_gettime(time.CLOCK_REALTIME) - t5)
-		self.BEFORE = scan.ranges
+		#self.BEFORE = scan.ranges
 		# else:
-		# 	v = self.VBEF
-		# 	w = self.WBEF
-			# print("t5: ", time.clock_gettime(time.CLOCK_REALTIME) - t5)
-		#input("continue")
+		# v = self.VBEF
+		# w = self.WBEF
+		# print("t5: ", time.clock_gettime(time.CLOCK_REALTIME) - t5)
+		# input("continue")
 		self.send_vel(v,w)
 		#rospy.loginfo(rospy.get_caller_id() + "Min range %f", np.minimum(scan_ranges))
 
