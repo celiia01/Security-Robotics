@@ -1,0 +1,27 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/diego/Documentos/doctorado/delft/trajectron++/guidance_ws/devel/include/**",
+        "/opt/ros/noetic/include/**",
+        "/home/diego/Documentos/doctorado/delft/trajectron++/guidance_ws/src/asr_rapidxml/include/**",
+        "/home/diego/Documentos/doctorado/delft/trajectron++/guidance_ws/src/guidance_planner/include/**",
+        "/home/diego/Documentos/doctorado/delft/trajectron++/guidance_ws/src/lmpcc/lmpcc/include/**",
+        "/home/diego/Documentos/doctorado/delft/trajectron++/guidance_ws/src/jackal_simulator/mobile_robot_state_publisher/include/**",
+        "/home/diego/Documentos/doctorado/delft/trajectron++/guidance_ws/src/pedestrian_simulator/include/**",
+        "/home/diego/Documentos/doctorado/delft/trajectron++/guidance_ws/src/ros_tools/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}

@@ -1,10 +1,12 @@
 <launch>
 <param name="/use_sim_time" value="true"/>
+<arg name="name_space" default="robot_0"/>
 
   <node name="sim_robot" pkg="stage_ros" type="stageros" args="$(find test_sensors)/world/simple.world" output="screen"/>
-
-  <node pkg="test_sensors" type="readOdomLaser.py" name="odom_laser" output="screen"/>
-  <node pkg="test_sensors" type="velPublisher.py" name="vel_publish" output="screen"/>
   
+  <group ns = "$(arg name_space)">
+    <node pkg="test_sensors" type="readOdomLaser.py" name="odom_laser" output="screen"/>
+    <node pkg="test_sensors" type="velPublisher.py" name="vel_publish" output="screen"/>
+  </group>
   
 </launch>

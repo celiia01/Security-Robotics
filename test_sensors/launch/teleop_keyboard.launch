@@ -1,8 +1,11 @@
 <launch>
 <param name="/use_sim_time" value="true"/>
+<arg name="name_space" default="robot_0"/>
 
-  <node pkg="teleop_twist_keyboard" type="teleop_twist_keyboard.py" name="teleop" output="screen">
-  <remap from="cmd_vel" to="teleop_vel"/>
-  </node>
+  <group ns = "$(arg name_space)">
+    <node pkg="teleop_twist_keyboard" type="teleop_twist_keyboard.py" name="teleop" output="screen">
+      <remap from="cmd_vel" to="teleop_vel"/>
+    </node>
+  </group>
   
 </launch>

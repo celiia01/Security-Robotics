@@ -53,7 +53,7 @@ define target model
   obstacle_return 0
 )
 
-define target2 model
+define target2 position
 (
   size [0.150 0.150 0.150]
   gui_nose 0
@@ -85,7 +85,6 @@ define erratic position
 )
 
 
-
 # throw in a robot
 erratic( pose [ -4.5 -6.0 0.000 0.000 ] name "Audrie" color "blue")
 #block( pose [-5 -6 0 0 ] name "obstacle" color "red")
@@ -93,7 +92,4 @@ block( pose [-3.8 -6.0 0 0 ] name "obstacle" color "red")
 #block( pose [ -4.5 -5.2 0.000 0.000 ] name "obstacle2" color "red")
 #block( pose [ -4.5 -6.8 0.000 0.000 ] name "obstacle3" color "red")
 target2( pose [ 2.000 -5.000 0.000 0.000 ] name "t1" color "yellow")
-target2( pose [ 4.000 -1.000 0.000 0.000 ] name "t2" color "yellow")
-target2( pose [ -2.000 0.000 0.000 0.000 ] name "t3" color "yellow")
-target2( pose [ -1.000 5.000 0.000 0.000 ] name "t4" color "yellow")
 
