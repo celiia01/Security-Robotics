@@ -5,6 +5,7 @@ import message_filters
 import numpy as np
 import math
 import matplotlib.pyplot as plt
+import matplotlib.colors as colors
 import time
 
 from sensor_msgs.msg import LaserScan
@@ -177,6 +178,7 @@ class TestNode:
 		'''
 		if len(polar) == 2 and polar[0][1] == np.deg2rad(-self.ANGLE_VISION / 2) and polar[1][1] == np.deg2rad(self.ANGLE_VISION / 2):
 			return True
+		# print("v: ", v, ", w: ", w)
 		#POSITION ACTUAL
 		self.lock.acquire()
 		pos1 = self.locRobot
@@ -205,7 +207,7 @@ class TestNode:
 		rad1 = -np.inf
 		rad2 =  np.inf
 
-		allRad, allThetas = [], []
+		allRad, allThetas, allThetas2 = [], [], []
 		allDistancesR2 = []
 
 
@@ -286,6 +288,8 @@ class TestNode:
 				radius = ((r2XO[0]) ** 2 + (r2XO[1])**2) / (2 * r2XO[1])
 				theta = math.atan2((2 * r2XO[0] * r2XO[1]), (r2XO[0]**2 - r2XO[1]**2))
 				distance = abs(radius * theta) - self.SIZEROBOT
+
+			allThetas2.append([theta])
 			
 			# EN EL SIGUIENTE MOVIMIENTO EL OBSTACULO ESTÁ MUY CERCA, DEPENDIENDO DEL RADIO O DE LA VELOCIDAD ANGULAR
 			# SE DEVUELVE QUE NO ES ADMISIBLE POR ACERCARSE AL OBSTACULO
@@ -298,6 +302,7 @@ class TestNode:
 		if len(allRad) > 0:
 			arrayRad = np.asarray(allRad)
 			arrayTh = np.asarray(allThetas)
+			arrayTh2 = np.asarray(allThetas2)
 			arrayDist = np.asarray(allDistancesR2)
 			arrayDist = np.where(arrayDist >= 0, arrayDist, 100000)
 			minorDistance = np.amin(arrayDist)
@@ -334,19 +339,20 @@ class TestNode:
 
 			#THE OBSTACLE IS DOWN THE ROBOT
 			elif obsDown:
-				if w >0:
-					return True
+				# if w >0:
+				# 	return True
 				# SI W == 0 MIRO SI EL MENOR ANGULO DE AMBOS SIGNOS ES MAYOR QUE EL MENOR VALOR DE W 
-				if w == 0:
+				if w > 0:
 					arrayThetaPos = np.where(arrayTh >= 0, arrayTh, 100000)
 					minorThetaPos = np.amin(arrayThetaPos)
 
 					arrayThetaNeg = np.where(arrayTh <= 0, arrayTh, -100000)
 					minorThetaNeg = np.amax(arrayThetaNeg)
 
-					# print("minorNeg: ", minorThetaNeg, ", minorPos: ", minorThetaPos)
-					return minorThetaNeg < (-self.WCHANGE - self.SIZEROBOT) and minorThetaPos > (self.WCHANGE + self.SIZEROBOT)
-		
+					return v/minorThetaPos < self.WMAX and v/minorThetaPos < w
+				
+				if w == 0:
+					return minorDistance > self.SIZEROBOT
 				else:
 					if math.sqrt(2.0 * minorDistance * self.AMAXV) < v:
 						return False
@@ -368,18 +374,20 @@ class TestNode:
 					forbidden = ((minorDistance - self.AMAXV* dt) / 2) < v
 			#THE OBSTACLE IS UP THE ROBOT
 			elif obsUp:
-				if w < 0:
-					return True
+				# if w < 0:
+				# 	return True
 				# SI W == 0 MIRO SI EL MENOR ANGULO DE AMBOS SIGNOS ES MAYOR QUE EL MENOR VALOR DE W 
-				if w == 0:
+				if w < 0:
 					arrayThetaPos = np.where(arrayTh >= 0, arrayTh, 100000)
 					minorThetaPos = np.amin(arrayThetaPos)
 
 					arrayThetaNeg = np.where(arrayTh <= 0, arrayTh, -100000)
 					minorThetaNeg = np.amax(arrayThetaNeg)
 
-					# print("minorNeg: ", minorThetaNeg, ", minorPos: ", minorThetaPos)
-					return minorThetaNeg < (-self.WCHANGE - self.SIZEROBOT) and minorThetaPos > (self.WCHANGE + self.SIZEROBOT)
+
+					return v/minorThetaNeg > self.WMIN and v/minorThetaPos < abs(w)
+				if w == 0:
+					return minorDistance > self.SIZEROBOT
 
 				
 				else:
@@ -520,6 +528,8 @@ class TestNode:
 	def plotDWA(self):
 		fig, ax = plt.subplots()
 
+		custom = colors.ListedColormap(["white", "red", "orange", "green", "black"])
+
 		y = np.arange(0.8,-0.1, -0.1)
 		y = np.round(y, 2)
 		x = np.arange(-np.pi-(5*self.WCHANGE), np.pi+(5*self.WCHANGE), 5*self.WCHANGE)
@@ -532,7 +542,7 @@ class TestNode:
 			ax.set_title("DWA")
 
 			self.lock.acquire()
-			ax.matshow(self.matrix)
+			ax.matshow(self.matrix, cmap=custom)
 			self.lock.release()
 
 			ax.set_xticklabels(x)
@@ -576,98 +586,61 @@ class TestNode:
 		distancesToDesired = []
 		positions = []
 
-		positionsAchievables =[ [lineAct - (1 if lineAct - 1 >= 0 else 0), colAct - (1 if colAct - 1 >= 0 else 0)],
-		       				[lineAct - (1 if lineAct - 1 >= 0 else 0), colAct], 
-							[lineAct - (1 if lineAct - 1 >= 0 else 0), colAct + (1 if colAct + 1 >= 0 else 0)],
-							[lineAct, colAct - (1 if colAct - 1 >= 0 else 0)], [lineAct, colAct],
-							[lineAct, colAct + (1 if colAct + 1 >= 0 else 0)],
-							[lineAct + (1 if lineAct + 1 >= 0 else 0), colAct - (1 if colAct - 1 >= 0 else 0)],
-							[lineAct + (1 if lineAct + 1 >= 0 else 0), colAct], 
-							[lineAct + (1 if lineAct + 1 >= 0 else 0), colAct + (1 if colAct + 1 >= 0 else 0)]]
-
 		
 		# SEARCH A VELOCITY CLOSE TO THE DESIRED VELOCITY
-		windowSize = 1
+		windowSize = 2
 
 		vRet, wRet = 0.0, 0.0
-
-		while not foundAllowed and (minLine != 0 or maxLine != h + 1 or minCol != 0 or maxCol != w + 1):
 			
-			# WINDOW WITH 2 * WINDOWSIZE + 1 X 2 * WINDOWSIZE + 1
-			minLine = lineAct - windowSize if lineAct - windowSize >= 0 else 0
-			maxLine = lineAct + windowSize + 1 if lineAct + windowSize <= h else h + 1
-			minCol = colAct - windowSize if colAct - windowSize >= 0 else 0
-			maxCol = colAct + windowSize + 1 if colAct + windowSize <= w else w + 1
+		# WINDOW WITH 2 * WINDOWSIZE + 1 X 2 * WINDOWSIZE + 1
+		minLine = lineAct - windowSize if lineAct - windowSize >= 0 else 0
+		maxLine = lineAct + windowSize + 1 if lineAct + windowSize <= h else h + 1
+		minCol = colAct - windowSize if colAct - windowSize >= 0 else 0
+		maxCol = colAct + windowSize + 1 if colAct + windowSize <= w else w + 1
 
 
-			window = posibilities[minLine : maxLine, minCol: maxCol]
+		window = posibilities[minLine : maxLine, minCol: maxCol]
 
-			try:
-				index = np.where(window==1)
-				# CHANGE THE POSITIONS RELATIVE TO POSITIONS ABSOLUTES
-				for i in range(len(index[0])):
-					positionAbsoluteLine = index[0][i] - windowSize + lineAct
-					positionAbsoluteCol = index[1][i] - windowSize + colAct
-					positions += [[positionAbsoluteLine, positionAbsoluteCol]]
+		try:
+			index = np.where(window==1)
+			# CHANGE THE POSITIONS RELATIVE TO POSITIONS ABSOLUTES
+			for i in range(len(index[0])):
+				positionAbsoluteLine = index[0][i] - windowSize + lineAct
+				positionAbsoluteCol = index[1][i] - windowSize + colAct
+				positions += [[positionAbsoluteLine, positionAbsoluteCol]]
 
-					#CALCULATE THE DISTANCES BETWEEN THIS POINT AND THE POINT OF THE DESIRED VELOCITY
-					distancesToDesired += [[math.sqrt((line - positionAbsoluteLine) **2+ (col - positionAbsoluteCol) ** 2)]]
-				# SELECT THE POINT WITH THE MINIMUM DISTANCE TO THE SELECTED
-				minimunDistance = np.amin(distancesToDesired)
+				#CALCULATE THE DISTANCES BETWEEN THIS POINT AND THE POINT OF THE DESIRED VELOCITY
+				distancesToDesired += [[math.sqrt((line - positionAbsoluteLine) **2+ (col - positionAbsoluteCol) ** 2)]]
+			# SELECT THE POINT WITH THE MINIMUM DISTANCE TO THE SELECTED
+			minimunDistance = np.amin(distancesToDesired)
+			searchingIndex = np.where(distancesToDesired == minimunDistance)[0][0]
+			selected = positions[searchingIndex]
+
+			# VELOCITIES RELATED TO THE POSITION SELECTED
+			vRet = np.round((self.VMAX - selected[0] * self.VCHANGE), 2)
+			wRet = np.round(((selected[1] * self.WCHANGE) - self.WMAX), 3)
+			if vRet == 0.0 and wRet == 0.0:
+				distancesToDesired[searchingIndex] = [np.inf]
+				# SELECT THE POINT WITH THE SECOND MINIMUM DISTANCE
+				minimunDistance = np.min(distancesToDesired)
 				searchingIndex = np.where(distancesToDesired == minimunDistance)[0][0]
 				selected = positions[searchingIndex]
 
-				# VELOCITIES RELATED TO THE POSITION SELECTED
+				# NEW VELOCITIES RELATED TO THE NEW POSITION SELECTED
 				vRet = np.round((self.VMAX - selected[0] * self.VCHANGE), 2)
 				wRet = np.round(((selected[1] * self.WCHANGE) - self.WMAX), 3)
-				if vRet == 0.0 and wRet == 0.0:
-					distancesToDesired[searchingIndex] = [np.inf]
-					# SELECT THE POINT WITH THE SECOND MINIMUM DISTANCE
-					minimunDistance = np.min(distancesToDesired)
-					searchingIndex = np.where(distancesToDesired == minimunDistance)[0][0]
-					selected = positions[searchingIndex]
 
-					# NEW VELOCITIES RELATED TO THE NEW POSITION SELECTED
-					vRet = np.round((self.VMAX - selected[0] * self.VCHANGE), 2)
-					wRet = np.round(((selected[1] * self.WCHANGE) - self.WMAX), 3)
-
-			
-				foundAllowed = True
-			except:
-				windowSize += 1
 		
-		if foundAllowed:
-
-			# CHECK IF THE VELOCITY IS ACHIEVABLE
-			linearAchievable = self.VBEF + self.AMAXV * dt >= vRet and self.VBEF - self.AMAXV * dt <= vRet
-			angularAchievable = self.WBEF + self.AMAXW * dt >= wRet and self.WBEF - self.AMAXW * dt <= wRet
+			foundAllowed = True
+		except:
+			windowSize += 1
+		
+		if not foundAllowed:
 				
-			if not linearAchievable and not angularAchievable:
-				distanceToSelected = []
-				# THE SELECTED VELOCITY IS NOT REACHABLE
-				for dinamic in positionsAchievables:
-					distanceToSelected += [[math.sqrt((selected[0] - dinamic[0])** 2 + (selected[1] - dinamic[1])** 2)]]
-
-				# SELECT THE POINT WITH THE MINIMUM DISTANCE TO THE SELECTED
-				minimunDistance = np.amin(distanceToSelected)
-				searchingIndex = np.where(distanceToSelected == minimunDistance)[0][0]
-				selected = positionsAchievables[searchingIndex]
-
-				vRet = np.round((self.VMAX - selected[0] * self.VCHANGE), 2)
-				wRet = np.round(((selected[1] * self.WCHANGE) - self.WMAX), 3)
-				if vRet == 0.0 and wRet == 0.0:
-					distanceToSelected[searchingIndex] = [np.inf]
-					# SELECT THE POINT WITH THE SECOND MINIMUM DISTANCE
-					minimunDistance = np.amin(distanceToSelected)
-					searchingIndex = np.where(distanceToSelected == minimunDistance)[0][0]
-					selected = positionsAchievables[searchingIndex]
-
-					# NEW VELOCITIES RELATED TO THE NEW POSITION SELECTED
-					vRet = np.round((self.VMAX - selected[0] * self.VCHANGE), 2)
-					wRet = np.round(((selected[1] * self.WCHANGE) - self.WMAX), 3)
+			vRet = vRet - self.AMAXV * dt
 
 
-			return vRet, wRet
+		return vRet, wRet
 
 
 		
