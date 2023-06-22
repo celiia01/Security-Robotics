@@ -29,11 +29,11 @@ class VelPub:
 		self.goal_y = data.pose.pose.position.y
 
 	def publish(self, event=None):
-		print("Robot pose-> x: ", self.robot_x, ", y: ", self.robot_y, ", theta: ", self.robot_theta)
-		print("Goal-> x: ", self.goal_x, ", y: ", self.goal_y)
+		#print("Robot pose-> x: ", self.robot_x, ", y: ", self.robot_y, ", theta: ", self.robot_theta)
+		#print("Goal-> x: ", self.goal_x, ", y: ", self.goal_y)
 		msg = TwistStamped()
 		msg.twist.linear.x = 0.5
-		msg.twist.angular.z = 0.0
+		msg.twist.angular.z = 1.309
 		msg.header.stamp = rospy.Time.now()
 		self.pub.publish(msg)
 		

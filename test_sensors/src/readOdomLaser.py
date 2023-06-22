@@ -19,10 +19,12 @@ class TestNode:
 	ANGLE_VISION = 270
 
 	# Types of velocities
+	FREE = 0
 	FORBIDEN = 1
 	DYNAMIC_WINDOW = 2
 	FEASIBLE = 3
 	ACTUAL = 4
+	OUT = 5
 
 	#Maximun Accelerations
 	AMAXV = 0.7
@@ -65,9 +67,12 @@ class TestNode:
 		self.trayectoria_top = False
 		self.trayectoria_bottom = False
 		self.timeCall = 0.2
-		self.matrix = np.zeros((70,25))
+		#self.matrix = np.zeros((70,25))
+		self.matrix = np.zeros((7,7))
 		self.locRobot = np.array([-4.5, -6, 0])
 		self.wake = False
+		self.minV, self.maxV = 0.0, 0.7
+		self.minW, self.maxW = -3.142, 3.142
 
 	
 	def callback_teleop(self, msg: Twist):
@@ -316,20 +321,19 @@ class TestNode:
 
 				newArrayr1 = np.where(arrayRad > 0, arrayRad, 100000)
 				rad1 = np.amin(newArrayr1) - self.SIZEROBOT
-				# if v == 0.05 and abs(w) == 0.262:
-				# 	print("r1b: ", np.amin(newArrayr1))
+
 				
 				rad1Forbidden = (r >= rad1) if r > 0 else rad1 >= r
 
 				newArrayr2 = np.where(arrayRad < 0, arrayRad, -100000)
 				rad2 = np.amax(newArrayr2) + self.SIZEROBOT
-				# if v == 0.05 and abs(w) == 0.262:
-				# 	print("r2b: ", np.amax(newArrayr2))
+
 
 				rad2Forbidden = (rad2 >= r) if r < 0 else rad2 <= r
 
-				# if v == 0.05 and abs(w) == 0.262:
-				# 	print("w: ", w, " r1: ", rad1, " f1: ", rad1Forbidden, " RAD2: ", rad2, " f2: ", rad2Forbidden)
+				if v == self.VBEF and w == self.WBEF:
+					print("rad1: ", rad1, " rad2: ", rad2)
+					print(newArrayr2)
 
 				forbidden = rad1Forbidden and rad2Forbidden
 
@@ -339,9 +343,7 @@ class TestNode:
 
 			#THE OBSTACLE IS DOWN THE ROBOT
 			elif obsDown:
-				# if w >0:
-				# 	return True
-				# SI W == 0 MIRO SI EL MENOR ANGULO DE AMBOS SIGNOS ES MAYOR QUE EL MENOR VALOR DE W 
+				print("down")
 				if w > 0:
 					arrayThetaPos = np.where(arrayTh >= 0, arrayTh, 100000)
 					minorThetaPos = np.amin(arrayThetaPos)
@@ -352,7 +354,9 @@ class TestNode:
 					return v/minorThetaPos < self.WMAX and v/minorThetaPos < w
 				
 				if w == 0:
-					return minorDistance > self.SIZEROBOT
+					continueStraight = polar[0][1] < np.deg2rad(-35)
+						
+					return continueStraight
 				else:
 					if math.sqrt(2.0 * minorDistance * self.AMAXV) < v:
 						return False
@@ -364,9 +368,6 @@ class TestNode:
 					rad1Forbidden = r <= rad1
 					rad2Forbidden = r >= rad2
 
-					# if v == 0.05 and abs(w) == 0.262:
-					# 	print("Down r1: ", rad1, " rad2: ", rad2)
-
 
 				forbidden = rad1Forbidden and rad2Forbidden
 
@@ -374,9 +375,6 @@ class TestNode:
 					forbidden = ((minorDistance - self.AMAXV* dt) / 2) < v
 			#THE OBSTACLE IS UP THE ROBOT
 			elif obsUp:
-				# if w < 0:
-				# 	return True
-				# SI W == 0 MIRO SI EL MENOR ANGULO DE AMBOS SIGNOS ES MAYOR QUE EL MENOR VALOR DE W 
 				if w < 0:
 					arrayThetaPos = np.where(arrayTh >= 0, arrayTh, 100000)
 					minorThetaPos = np.amin(arrayThetaPos)
@@ -387,7 +385,7 @@ class TestNode:
 
 					return v/minorThetaNeg > self.WMIN and v/minorThetaPos < abs(w)
 				if w == 0:
-					return minorDistance > self.SIZEROBOT
+					return polar[0][1] > np.deg2rad(35)
 
 				
 				else:
@@ -400,9 +398,6 @@ class TestNode:
 
 					rad1Forbidden = r >= rad1
 					rad2Forbidden = r <= rad2
-
-					# if v == 0.05 and abs(w) == 0.262:
-					# 	print("UP: r1: ", rad1, " rad2: ", rad2)
 
 
 				forbidden = rad1Forbidden and rad2Forbidden
@@ -423,7 +418,6 @@ class TestNode:
 		'''
 			Return the type of velocities for each one
 		'''
-
 		# Feasible velocities
 		if (admissible and v >= limitVLow and v <= limitVUp and w >= limitWLow and w <= limitWUp ):
 			return self.FEASIBLE
@@ -441,30 +435,80 @@ class TestNode:
 		'''
 		Calculate the DWA's matrix and return a matrix with 1's in the allowed pair of velocities and 0's in the forbidden ones
 		'''
-		self.VCHANGE = 0.05
-		self.WCHANGE = 15 * math.pi / 180.0
 
-		x = int(round((self.VMAX - self.VMIN) / self.VCHANGE, 0)) + 1
-		y = int(round((self.WMAX - self.WMIN) / self.WCHANGE, 0)) + 1
+		# Dynamically admissible velocities
+		limitVLow = round(vAct - self.AMAXV * self.timeCall, 2)
+		limitVUp = round(vAct + self.AMAXV * self.timeCall, 2)
+		limitWLow = round(wAct - self.AMAXW * self.timeCall, 3)
+		limitWUp = round(wAct + self.AMAXW * self.timeCall, 3)
+
+		minV, maxV, minW, maxW = limitVLow, limitVUp, limitWLow, limitWUp
+		if (limitVLow % self.VCHANGE) != 0:
+			if vAct >= 0 and limitVLow <= 0:
+				cociente = int(limitVLow/self.VCHANGE)
+				minV = round(cociente * self.VCHANGE, 2)
+			else:
+				cociente = int((vAct - limitVLow )/self.VCHANGE)
+				minV = round(vAct - cociente * self.VCHANGE, 2)
+
+		if (limitVUp % self.VCHANGE) != 0:
+			cociente = int(limitVUp/self.VCHANGE)
+			maxV = round(cociente * self.VCHANGE, 2)
+
+		if (limitWLow % self.WCHANGE) != 0:
+			if wAct >= 0.0 and limitWLow <= 0.0:
+				cociente = int(limitWLow/self.WCHANGE)
+				minW = round(cociente * self.WCHANGE, 3)
+			else:
+				cociente = int((wAct - limitWLow)/self.WCHANGE)
+				minW = round(wAct - cociente * self.WCHANGE, 3)
+
+		if (limitWUp % self.WCHANGE) != 0:
+			if wAct >= 0.0 or (wAct > 0 and limitWUp <= 0.0):
+				cociente = int(limitWUp/self.WCHANGE)
+				maxW = round(cociente * self.WCHANGE,3)
+			else:
+				cociente = int((limitWUp - wAct) /self.WCHANGE)
+				maxW = round( wAct + cociente * self.WCHANGE, 3)
+
+		x = int(round((maxV - minV) / self.VCHANGE, 0)) + 1
+		y = int(round((maxW - minW) / self.WCHANGE, 0)) + 1
+		self.lock.acquire()
+		self.minV, self.maxV = minV, maxV
+		self.minW, self.maxW = minW, maxW
+		self.lock.release()
 		# print("x: ", x, ", y: ", y)
+		# # print(vAct, wAct)
+		# print(limitVUp, maxV, limitVLow, minV)
+		# print(limitWUp, maxW, limitWLow, minW)
+		# print(np.arange(maxV, minV - self.VCHANGE, -self.VCHANGE))
+		# # print(np.arange(maxV + self.VCHANGE, minV - self.VCHANGE, -self.VCHANGE))
+		# print(np.arange(minW, maxW + self.WCHANGE, self.WCHANGE))
 		dWA = np.zeros([x,y])
 		posibilities = np.ones([x, y])
 		t1 = time.clock_gettime(time.CLOCK_REALTIME)
 		i = 0
 		j = 0
 
-		# Dynamically admissible velocities
-		limitVLow = vAct - self.AMAXV * self.timeCall
-		limitVUp = vAct + self.AMAXV * self.timeCall
-		limitWLow = wAct - self.AMAXW * self.timeCall
-		limitWUp = wAct + self.AMAXW * self.timeCall
 
 		obstacle = False
 
-		for v in np.arange(self.VMAX, self.VMIN -self.VCHANGE, -self.VCHANGE):
+		for v in np.arange(maxV, minV - self.VCHANGE, -self.VCHANGE):
 			v = 0 if v > 0 and v < 0.01 else round(v, 2)
-			for w in np.arange(self.WMIN, self.WMAX + self.WCHANGE, self.WCHANGE):
+			if v < minV:
+				break
+			for w in np.arange(minW, maxW + self.WCHANGE, self.WCHANGE):
 				w = 0 if abs(w) < 0.001 and abs(w) > 0 else round(w,3)
+				if w > maxW:
+					break
+				if v < self.VMIN or w < self.WMIN or w > self.WMAX:
+					dWA[i][j] = self.OUT
+					j += 1
+					continue
+				if v == 0.0:
+					dWA[i][j] = (self.ACTUAL if (v == vAct or (v < vAct and v + self.VCHANGE > vAct))and w == wAct else self.FREE)
+					j += 1
+					continue
 				obstacle = False
 				if v != 0 and len(scan_sub) != 0:
 					t3 = time.clock_gettime(time.CLOCK_REALTIME)
@@ -477,7 +521,7 @@ class TestNode:
 					# t4 = time.clock_gettime(time.CLOCK_REALTIME) - t3
 					num = self.restrictionDWA(v, w, admissible, limitVLow, limitVUp, limitWLow, limitWUp)
 					
-
+					# print("i: ", i ," j: ",j)
 					if num == self.FEASIBLE and dWA[i][j] != self.FORBIDEN and dWA[i][j] != self.DYNAMIC_WINDOW:
 						dWA[i][j] = num
 					elif num == self.DYNAMIC_WINDOW:
@@ -485,7 +529,6 @@ class TestNode:
 						posibilities[i][j] = 0
 					elif num == self.FORBIDEN and dWA[i][j] != self.DYNAMIC_WINDOW:
 						dWA[i][j] = num
-						
 						posibilities[i][j] = 0
 
 					# t4 = time.clock_gettime(time.CLOCK_REALTIME) - t3
@@ -518,6 +561,7 @@ class TestNode:
 		self.lock.acquire()
 		self.matrix = dWA
 		self.lock.release()
+		print(dWA)
 		t2 = time.clock_gettime(time.CLOCK_REALTIME) - t1
 		return posibilities
 	
@@ -527,34 +571,43 @@ class TestNode:
 
 	def plotDWA(self):
 		fig, ax = plt.subplots()
-
-		custom = colors.ListedColormap(["white", "red", "orange", "green", "black"])
-
-		y = np.arange(0.8,-0.1, -0.1)
-		y = np.round(y, 2)
-		x = np.arange(-np.pi-(5*self.WCHANGE), np.pi+(5*self.WCHANGE), 5*self.WCHANGE)
-		x = np.round(x, 3)
+		minV, maxV, minW, maxW = 0.0 ,0.0, 0.0, 0.0
+		custom = colors.ListedColormap(["white", "red", "orange", "green", "yellow", "black"])
+	
 
 		while(True):
+			t10 = time.clock_gettime(time.CLOCK_REALTIME)
+			self.lock.acquire()
+			minV, maxV = self.minV, self.maxV
+			minW, maxW = self.minW, self.maxW
+			self.lock.release()
+
+			y = np.arange(maxV + self.VCHANGE, minV - self.VCHANGE, -self.VCHANGE)
+			y = np.round(y, 2)
+			x = np.arange(minW - self.WCHANGE, maxW  + self.WCHANGE, self.WCHANGE)
+			x = np.round(x, 3)
+
 			# self.lock.acquire()
 			# print("								 mat[8][12]: ", self.matrix[8][12])
 			# self.lock.release()
 			ax.set_title("DWA")
 
 			self.lock.acquire()
-			ax.matshow(self.matrix, cmap=custom)
+			ax.matshow(self.matrix, cmap=custom, vmin = self.FREE, vmax= self.OUT)
+			#plt.heatmap(self.matrix, cmap=custom, vmin = self.FREE, vmax= self.ACTUAL)
 			self.lock.release()
-
+			# plt.
 			ax.set_xticklabels(x)
 			ax.set_yticklabels(y)
 
 			#fig.set_size_inches(10, 10, forward=True)
 			fig.show()
-			plt.pause(0.1)
+			plt.pause(0.001)
+
 			self.lock.acquire()
 			self.wake = True
 			self.lock.release()
-			time.sleep(0.001)
+			#print("tD: ",time.clock_gettime(time.CLOCK_REALTIME) - t10)
 
 
 	def searchVelocities(self, desired_v: float, desired_w: float, posibilities: np.array):
@@ -564,12 +617,12 @@ class TestNode:
 		self.lock.acquire()
 		dt = self.timeCall
 		self.lock.release()
-		# LINE AND COLUMN OF THE DESIRED VELOCITY
+		# LINE AND COLUMN OF THE DESIRED VELOCITY IN THE SPACE OF SPEEDS
 		line = int(np.round((self.VMAX - desired_v) / self.VCHANGE))
 		colDec = ( desired_w + self.WMAX) / self.WCHANGE
 		col = int(np.round(colDec))
 
-		# LINE AND COLUMN OF THE ACTUAL VELOCITY
+		# LINE AND COLUMN OF THE ACTUAL VELOCITY IN THE SPACE OF SPEEDS
 		lineAct = int(np.round((self.VMAX - self.VBEF) / self.VCHANGE))
 		colDecAct = ( self.WBEF + self.WMAX) / self.WCHANGE
 		colAct = int(np.round(colDecAct))
@@ -581,8 +634,6 @@ class TestNode:
 
 		foundAllowed = False
 
-		minLine, minCol, maxCol, maxLine = 0, 0, 0, 0 
-
 		distancesToDesired = []
 		positions = []
 
@@ -592,14 +643,14 @@ class TestNode:
 
 		vRet, wRet = 0.0, 0.0
 			
-		# WINDOW WITH 2 * WINDOWSIZE + 1 X 2 * WINDOWSIZE + 1
-		minLine = lineAct - windowSize if lineAct - windowSize >= 0 else 0
-		maxLine = lineAct + windowSize + 1 if lineAct + windowSize <= h else h + 1
-		minCol = colAct - windowSize if colAct - windowSize >= 0 else 0
-		maxCol = colAct + windowSize + 1 if colAct + windowSize <= w else w + 1
+		# # WINDOW WITH 2 * WINDOWSIZE + 1 X 2 * WINDOWSIZE + 1
+		# minLine = lineAct - windowSize if lineAct - windowSize >= 0 else 0
+		# maxLine = lineAct + windowSize + 1 if lineAct + windowSize <= h else h + 1
+		# minCol = colAct - windowSize if colAct - windowSize >= 0 else 0
+		# maxCol = colAct + windowSize + 1 if colAct + windowSize <= w else w + 1
 
 
-		window = posibilities[minLine : maxLine, minCol: maxCol]
+		window = posibilities
 
 		try:
 			index = np.where(window==1)
@@ -636,16 +687,18 @@ class TestNode:
 			windowSize += 1
 		
 		if not foundAllowed:
-				
-			vRet = vRet - self.AMAXV * dt
+			vRet = round(self.VBEF - self.AMAXV * dt, 2)
+			wRet = self.WBEF
 
-
+		vRet = 0 if vRet < 0 else vRet
 		return vRet, wRet
 
 
 		
 
 	def callback(self, scan: LaserScan, odom: Odometry, desired_vel: TwistStamped):
+
+		# print(np.arange(maxV, minV - self.VCHANGE, -self.VCHANGE))
 		# print("						callback: ", scan.ranges[540])
 		t5 = time.clock_gettime(time.CLOCK_REALTIME)
 		x = odom.pose.pose.position.x
@@ -731,11 +784,11 @@ class TestNode:
 
 		# v, w = TestNode.skipObstacle(self,scan_ranges, middle, top, bottom, desired_v, desired_w, distance)																																																				
 		# print("t5: ", time.clock_gettime(time.CLOCK_REALTIME) - t5)
-		#self.BEFORE = scan.ranges
+		self.BEFORE = scan.ranges
 		# else:
 		# v = self.VBEF
 		# w = self.WBEF
-		# print("t5: ", time.clock_gettime(time.CLOCK_REALTIME) - t5)
+		#print("t5: ", time.clock_gettime(time.CLOCK_REALTIME) - t5)
 		# input("continue")
 		self.send_vel(v,w)
 		#rospy.loginfo(rospy.get_caller_id() + "Min range %f", np.minimum(scan_ranges))
