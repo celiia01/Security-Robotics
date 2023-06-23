@@ -39,7 +39,7 @@ class TestNode:
 	# Maximum distance for possible collision
 	MAXDISTANCE = AMAXW/2
 
-	SIZEROBOT = 0.17
+	SIZEROBOT = 0.2
 
 	# Value of the difference between the velocities chosen
 	VCHANGE = 0.05
@@ -314,8 +314,6 @@ class TestNode:
 
 			#THE OBSTACLE IS IN FRONT THE ROBOT
 			if obsInFront:
-				# if v == 0.05 and abs(w) == 0.262:
-				# 	print("w: ", w, " minor: ", minorDistance)
 				if math.sqrt(2.0 * minorDistance * self.AMAXV) < v:
 					return False
 
@@ -328,22 +326,12 @@ class TestNode:
 				newArrayr2 = np.where(arrayRad < 0, arrayRad, -100000)
 				rad2 = np.amax(newArrayr2) + self.SIZEROBOT
 
-
 				rad2Forbidden = (rad2 >= r) if r < 0 else rad2 <= r
 
-				if v == self.VBEF and w == self.WBEF:
-					print("rad1: ", rad1, " rad2: ", rad2)
-					print(newArrayr2)
-
-				forbidden = rad1Forbidden and rad2Forbidden
-
-				if forbidden and minorDistance != 100000:
-					forbidden = ((minorDistance - self.AMAXV* dt) / 2) < v
 
 
 			#THE OBSTACLE IS DOWN THE ROBOT
 			elif obsDown:
-				print("down")
 				if w > 0:
 					arrayThetaPos = np.where(arrayTh >= 0, arrayTh, 100000)
 					minorThetaPos = np.amin(arrayThetaPos)
@@ -351,28 +339,26 @@ class TestNode:
 					arrayThetaNeg = np.where(arrayTh <= 0, arrayTh, -100000)
 					minorThetaNeg = np.amax(arrayThetaNeg)
 
-					return v/minorThetaPos < self.WMAX and v/minorThetaPos < w
+					return v/minorThetaPos < self.WMAX and abs(v/minorThetaNeg) < w
 				
 				if w == 0:
-					continueStraight = polar[0][1] < np.deg2rad(-35)
-						
+					continueStraight = polar[len(polar) - 1][1] < np.deg2rad(-35)
 					return continueStraight
 				else:
 					if math.sqrt(2.0 * minorDistance * self.AMAXV) < v:
 						return False
-					
+
 					rad1 = (rad1 + self.SIZEROBOT) if (rad1 + self.SIZEROBOT) <= 0 else 0
 
 					rad2 = (rad2 - self.SIZEROBOT) if rad2 < 0 else (rad2 + self.SIZEROBOT)
+
 					
 					rad1Forbidden = r <= rad1
 					rad2Forbidden = r >= rad2
 
+					
 
-				forbidden = rad1Forbidden and rad2Forbidden
 
-				if forbidden and minorDistance != 100000:
-					forbidden = ((minorDistance - self.AMAXV* dt) / 2) < v
 			#THE OBSTACLE IS UP THE ROBOT
 			elif obsUp:
 				if w < 0:
@@ -382,7 +368,6 @@ class TestNode:
 					arrayThetaNeg = np.where(arrayTh <= 0, arrayTh, -100000)
 					minorThetaNeg = np.amax(arrayThetaNeg)
 
-
 					return v/minorThetaNeg > self.WMIN and v/minorThetaPos < abs(w)
 				if w == 0:
 					return polar[0][1] > np.deg2rad(35)
@@ -391,24 +376,23 @@ class TestNode:
 				else:
 					if math.sqrt(2.0 * minorDistance * self.AMAXV) < v:
 						return False
-					
-					rad1 = (rad1 - self.SIZEROBOT) if (rad1 - self.SIZEROBOT) >= 0 else 0
+
+					rad1 = (rad1 + self.SIZEROBOT) if rad1 > 0 else (rad1 - self.SIZEROBOT)
 				
-					rad2 = (rad2 + self.SIZEROBOT)
+					rad2 = (rad2 - self.SIZEROBOT) if (rad2 - self.SIZEROBOT) >= 0 else 0 
 
-					rad1Forbidden = r >= rad1
-					rad2Forbidden = r <= rad2
+					rad1Forbidden = r <= rad1
+					rad2Forbidden = r >= rad2
 
-
-				forbidden = rad1Forbidden and rad2Forbidden
-
-				if forbidden and minorDistance != 100000:
-					forbidden = ((minorDistance - self.AMAXV* dt) / 2) < v
 
 			else:
 				print("WARNING|||1, ", v, ", ", w)
 				print("distances: ", polar)
 
+		forbidden = rad1Forbidden and rad2Forbidden
+
+		if forbidden and minorDistance != 100000:
+			forbidden = ((minorDistance - self.AMAXV* dt) / 2) < v
 
 		return not forbidden
 		
@@ -477,13 +461,7 @@ class TestNode:
 		self.minV, self.maxV = minV, maxV
 		self.minW, self.maxW = minW, maxW
 		self.lock.release()
-		# print("x: ", x, ", y: ", y)
-		# # print(vAct, wAct)
-		# print(limitVUp, maxV, limitVLow, minV)
-		# print(limitWUp, maxW, limitWLow, minW)
-		# print(np.arange(maxV, minV - self.VCHANGE, -self.VCHANGE))
-		# # print(np.arange(maxV + self.VCHANGE, minV - self.VCHANGE, -self.VCHANGE))
-		# print(np.arange(minW, maxW + self.WCHANGE, self.WCHANGE))
+
 		dWA = np.zeros([x,y])
 		posibilities = np.ones([x, y])
 		t1 = time.clock_gettime(time.CLOCK_REALTIME)
@@ -501,16 +479,20 @@ class TestNode:
 				w = 0 if abs(w) < 0.001 and abs(w) > 0 else round(w,3)
 				if w > maxW:
 					break
-				if v < self.VMIN or w < self.WMIN or w > self.WMAX:
+				if v < self.VMIN or w < round(self.WMIN,3) or w > round(self.WMAX,3):
 					dWA[i][j] = self.OUT
+					posibilities[i][j] = 0
 					j += 1
 					continue
 				if v == 0.0:
-					dWA[i][j] = (self.ACTUAL if (v == vAct or (v < vAct and v + self.VCHANGE > vAct))and w == wAct else self.FREE)
+					if ((v == vAct or (v < vAct and round(v + self.VCHANGE, 2) > vAct)) and (w == wAct)):
+						dWA[i][j] = self.ACTUAL
+					else:
+						dWA[i][j] = self.FREE
 					j += 1
 					continue
 				obstacle = False
-				if v != 0 and len(scan_sub) != 0:
+				if v != 0.0 and len(scan_sub) != 0:
 					t3 = time.clock_gettime(time.CLOCK_REALTIME)
 					obstacle = True
 
@@ -551,7 +533,7 @@ class TestNode:
 						
 
 				# Actual Velocity
-				if (v == vAct and w == wAct):
+				if ((v == vAct or (v < vAct and round(v + self.VCHANGE, 2) > vAct)) and (w == wAct)):
 					dWA[i][j] = self.ACTUAL
 				j += 1
 					
@@ -561,7 +543,6 @@ class TestNode:
 		self.lock.acquire()
 		self.matrix = dWA
 		self.lock.release()
-		print(dWA)
 		t2 = time.clock_gettime(time.CLOCK_REALTIME) - t1
 		return posibilities
 	

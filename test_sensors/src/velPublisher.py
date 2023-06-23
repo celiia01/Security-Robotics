@@ -33,7 +33,7 @@ class VelPub:
 		#print("Goal-> x: ", self.goal_x, ", y: ", self.goal_y)
 		msg = TwistStamped()
 		msg.twist.linear.x = 0.5
-		msg.twist.angular.z = 1.309
+		msg.twist.angular.z = 0.0
 		msg.header.stamp = rospy.Time.now()
 		self.pub.publish(msg)
 		
