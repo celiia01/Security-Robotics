@@ -53,6 +53,8 @@ class TestNode:
 	# List of previous distances obtainded by the LaserScan
 	BEFORE = []
 
+	OBSUP, OBSDOWN, OBSINFRONT = False, False, False
+
 	def __init__(self):
 		self.lidar_sub = message_filters.Subscriber('base_scan', LaserScan)
 		self.teleop_sub = rospy.Subscriber('teleop_vel', Twist, self.callback_teleop, queue_size=10)
@@ -190,11 +192,13 @@ class TestNode:
 		obsUp = polar[0][1] > 0 and polar[len(polar) - 1][1] > 0
 		obsInFront = polar[0][1] <= 0 and polar[len(polar) - 1][1] >= 0
 
-		try:
-			np.where(polar[:][1] == 0)
-			obsInFront = obsInFront and True
-		except:
-			obsInFront = False
+		self.OBSDOWN, self.OBSUP, self.OBSINFRONT = obsDown, obsUp, obsInFront
+
+		# try:
+		# 	np.where(polar[:][1] == 0)
+		# 	obsInFront = obsInFront and True
+		# except:
+		# 	obsInFront = False
 
 		#PASO A COORDENADAS CARTESIANAS LAS COORDENADAS POLARES DE LOS OBSTACULOS
 		cartesians = np.array([self.polar2Cartesian(d) for d in polar])
@@ -318,12 +322,12 @@ class TestNode:
 				# print("min: ", np.amin(newArrayr1))
 				rad1 = (np.amin(newArrayr1) - self.SIZEROBOT) if (np.amin(newArrayr1) - self.SIZEROBOT) >= 0 else 0.0
 				
-				rad1Forbidden = ((r) >= rad1) if r > 0 else rad1 >= ( r )
+				rad1Forbidden = (r >= rad1) if r > 0 else rad1 >= r
 
 				newArrayr2 = np.where(arrayRad < 0, arrayRad, -100000)
 				rad2 = (np.amax(newArrayr2) + self.SIZEROBOT ) if (np.amax(newArrayr2) + self.SIZEROBOT ) <= 0 else 0.0
 
-				rad2Forbidden = (rad2 >= ( r )) if r < 0 else rad2 <= ( r )
+				rad2Forbidden = (rad2 >=  r) if r < 0 else rad2 <= r
 
 				# print("rad1: ", rad1, " rad2: ", rad2, " r: ", r, " v:", v, " w: ", w)
 				# print("forn: ", rad1Forbidden and rad2Forbidden)
@@ -633,12 +637,6 @@ class TestNode:
 
 		vRet, wRet = 0.0, 0.0
 			
-		# # WINDOW WITH 2 * WINDOWSIZE + 1 X 2 * WINDOWSIZE + 1
-		# minLine = lineAct - windowSize if lineAct - windowSize >= 0 else 0
-		# maxLine = lineAct + windowSize + 1 if lineAct + windowSize <= h else h + 1
-		# minCol = colAct - windowSize if colAct - windowSize >= 0 else 0
-		# maxCol = colAct + windowSize + 1 if colAct + windowSize <= w else w + 1
-
 
 		window = posibilities
 
@@ -678,8 +676,16 @@ class TestNode:
 		
 		if not foundAllowed:
 			vRet = round(self.VBEF - self.AMAXV * dt, 2)
-			wRet = self.WBEF
+			if self.OBSDOWN or (self.OBSINFRONT and self.WBEF > 0):
+				wRet = round(self.WBEF + self.AMAXW * dt, 3)
+			elif self.OBSUP or (self.OBSINFRONT and self.WBEF < 0):
+				wRet = round(self.WBEF - self.AMAXW * dt, 3)
 
+			if wRet > math.pi:
+				wRet = math.pi
+			if wRet < -math.pi:
+				wRet = -math.pi
+		wRet = round(wRet, 3)
 		vRet = 0 if vRet < 0 else vRet
 		return vRet, wRet
 

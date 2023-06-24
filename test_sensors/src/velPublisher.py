@@ -1,6 +1,7 @@
 #!/usr/bin/python3.8
 
 import rospy
+import time
 from geometry_msgs.msg import TwistStamped
 from nav_msgs.msg import Odometry
 from tf.transformations import euler_from_quaternion
@@ -8,6 +9,11 @@ from auxiliar import *
 
 
 class VelPub:
+	WCHANGE = 15 * math.pi / 180.0
+	WBEF = np.inf
+	TRAYECTORIA_POSITIVA = False
+	XROBOTBEF = 0
+	YROBOTBEF = 0
 	def __init__(self):
 		self.pub = rospy.Publisher('desired_vel', TwistStamped, queue_size=1)
 		self.robot_sub = rospy.Subscriber('/robot_0/odom', Odometry, self.robot_callback, queue_size=1)
@@ -30,8 +36,8 @@ class VelPub:
 		self.goal_y = data.pose.pose.position.y
 
 	def publish(self, event=None):
-		# print("Robot pose-> x: ", self.robot_x, ", y: ", self.robot_y, ", theta: ", self.robot_theta)
-		# print("Goal-> x: ", self.goal_x, ", y: ", self.goal_y)
+		print("Robot pose-> x: ", self.robot_x, ", y: ", self.robot_y, ", theta: ", self.robot_theta)
+		print("Goal-> x: ", self.goal_x, ", y: ", self.goal_y)
 		msg = TwistStamped()
 		vFixed = 0.7
 		wXR = np.array([self.robot_x, self.robot_y, self.robot_theta])
@@ -43,22 +49,56 @@ class VelPub:
 		rTG = np.linalg.inv(wTR) @ wTG
 		rXG = loc(rTG)
 		
-		if abs(rXG[0]) > 0.1 or abs(rXG[1]) > 0.1:
+		if abs(rXG[0]) > 0.15 or abs(rXG[1]) > 0.15:
+			
 			radius = (rXG[0]**2 + rXG[1]**2) / (2 * rXG[1])
-			print("rXG: ", rXG)
-			print("rad: ", radius)
-			w = vFixed / radius
+			if abs(radius) <= vFixed/self.WCHANGE:
+				w = vFixed / radius
+			else:
+				w = -self.WCHANGE if radius < 0 else self.WCHANGE
+
+			if self.robot_x == self.XROBOTBEF and self.robot_y == self.YROBOTBEF:
+				w = math.pi if radius >= 0 else -math.pi 
 		
+			# if abs(vFixed/w - rXG[0]) < 0.1 and rXG[0] > 0:
+			# 	print("DELANTE")
+			# 	vFixed = 0
+			
+			# elif abs(vFixed/w - rXG[0]) < 0.1 and rXG[0] < 0:
+			# 	print("DETRAS")
+			# 	w = 0
+			
+			# elif abs(vFixed/w - rXG[1] ) < 0.1:
+			# 	print("ARRIBA O ABAJO")
+			# 	vFixed = 0
+
+			if rXG[1] < 0.1 and abs(rXG[2]) < 0.1:
+				print("Y 0: ", rXG[1])
+				w = 0
+			if abs(rXG[0]) < 0.1 and abs(rXG[2]) < 0.1:
+				print("GIRO TH X 0: ")
+				vFixed = 0
+				w = math.pi if rXG[1] > 0 else -math.pi
+			
 			msg.twist.linear.x = vFixed
 			msg.twist.angular.z = round(w, 3)
-			print("Desired: ", w)
+
+			self.WBEF = w
+			self.RXGBEF = rXG
+			self.XROBOTBEF = self.robot_x
+			self.YROBOTBEF = self.robot_y
 		else:
-			print(rXG)
 			msg.twist.linear.x = 0
 			msg.twist.angular.z = 0
 		
 		msg.header.stamp = rospy.Time.now()
 		self.pub.publish(msg)
+		
+		# timeAct = time.clock_gettime(time.CLOCK_REALTIME)
+		# while (time.clock_gettime(time.CLOCK_REALTIME) - timeAct < 1):
+		# 	msg.header.stamp = rospy.Time.now()
+		# 	self.pub.publish(msg)
+		
 		
 
 def main():
