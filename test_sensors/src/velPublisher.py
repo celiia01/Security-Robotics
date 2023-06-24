@@ -4,6 +4,7 @@ import rospy
 from geometry_msgs.msg import TwistStamped
 from nav_msgs.msg import Odometry
 from tf.transformations import euler_from_quaternion
+from auxiliar import *
 
 
 class VelPub:
@@ -29,11 +30,33 @@ class VelPub:
 		self.goal_y = data.pose.pose.position.y
 
 	def publish(self, event=None):
-		#print("Robot pose-> x: ", self.robot_x, ", y: ", self.robot_y, ", theta: ", self.robot_theta)
-		#print("Goal-> x: ", self.goal_x, ", y: ", self.goal_y)
+		# print("Robot pose-> x: ", self.robot_x, ", y: ", self.robot_y, ", theta: ", self.robot_theta)
+		# print("Goal-> x: ", self.goal_x, ", y: ", self.goal_y)
 		msg = TwistStamped()
-		msg.twist.linear.x = 0.5
-		msg.twist.angular.z = 0.0
+		vFixed = 0.7
+		wXR = np.array([self.robot_x, self.robot_y, self.robot_theta])
+		wTR = hom(wXR)
+
+		wXG = np.array([self.goal_x, self.goal_y, 0])
+		wTG = hom(wXG)
+
+		rTG = np.linalg.inv(wTR) @ wTG
+		rXG = loc(rTG)
+		
+		if abs(rXG[0]) > 0.1 or abs(rXG[1]) > 0.1:
+			radius = (rXG[0]**2 + rXG[1]**2) / (2 * rXG[1])
+			print("rXG: ", rXG)
+			print("rad: ", radius)
+			w = vFixed / radius
+		
+			msg.twist.linear.x = vFixed
+			msg.twist.angular.z = round(w, 3)
+			print("Desired: ", w)
+		else:
+			print(rXG)
+			msg.twist.linear.x = 0
+			msg.twist.angular.z = 0
+		
 		msg.header.stamp = rospy.Time.now()
 		self.pub.publish(msg)
 		

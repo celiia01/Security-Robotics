@@ -2,8 +2,6 @@
 
 import rospy
 import message_filters
-import numpy as np
-import math
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import time
@@ -12,6 +10,9 @@ from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import TwistStamped, Twist
 from multiprocessing import Lock, Process
+from tf.transformations import euler_from_quaternion
+from auxiliar import *
+
 
 
 class TestNode:
@@ -85,16 +86,6 @@ class TestNode:
 		self.vel_msg.linear.x = v
 		self.vel_msg.angular.z = w																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																					
 		self.vel_pub.publish(self.vel_msg)
-
-	def hom(self,x: np.array):
-		return np.array([
-			[np.cos(x[2]), -np.sin(x[2]), x[0]],
-			[np.sin(x[2]),  np.cos(x[2]), x[1]],
-			[			0,			   0,    1]
-		])
-
-	def loc(self,mat: np.array):
-		return np.array([mat[0][2], mat[1][2], math.atan2(mat[1][0], mat[0][0])])
  
 	def skipObstacle(self, scan_ranges, middle, top, bottom, desired_v, desired_w, distance):
 		self.lock.acquire()
@@ -192,7 +183,7 @@ class TestNode:
 
 		# CON V Y W SACO LA NUEVA POSICIÓN DONDE ESTARÁ EL ROBOT
 		pos2 = self.nextPosition(v, w, pos1)
-		r1TR2 = self.hom(pos2)
+		r1TR2 = hom(pos2)
 
 		# LOCALIZAR SI EL OBSTACULO ESTA ABAJO, ARRIBA O DELANTE
 		obsDown = polar[0][1] < 0 and polar[len(polar) - 1][1] < 0
@@ -207,6 +198,9 @@ class TestNode:
 
 		#PASO A COORDENADAS CARTESIANAS LAS COORDENADAS POLARES DE LOS OBSTACULOS
 		cartesians = np.array([self.polar2Cartesian(d) for d in polar])
+		# for c in cartesians:
+		# 	wTR1 = hom(pos1)
+		# 	print("o: ", loc(wTR1 @ hom(c)))
 		# if v == 0.05 and abs(w) == 0.262:
 		# 	print(cartesians)
 		rad1 = -np.inf
@@ -219,10 +213,10 @@ class TestNode:
 		r = v/w if w != 0 else np.inf
 
 		for r1XO in cartesians:
-			r1TO = self.hom(r1XO)
+			r1TO = hom(r1XO)
 			# SACO LA POSICIÓN DEL OBSTACULO DEPENDIENDO DE LA NUEVA POSICIÓN DEL ROBOT
 			r2TO = np.linalg.inv(r1TR2) @ r1TO
-			r2XO = self.loc(r2TO)
+			r2XO = loc(r2TO)
 			theta = 0
 
 			# CALCULO EN LA POSICIÓN INICIAL QUE INTERVALOS DE VELOCIDADES PUEDEN SER TOMADAS
@@ -243,6 +237,8 @@ class TestNode:
 				theta = math.atan2((2 * r1XO[0] * r1XO[1]), (r1XO[0]**2 - r1XO[1]**2))
 				distance = abs(radius * theta)
 			
+			if distance < self.SIZEROBOT:
+				return False
 			# if v == 0.05 and abs(w) == 0.262:
 			# 	print(radius)
 			
@@ -313,25 +309,29 @@ class TestNode:
 			minorDistance = np.amin(arrayDist)
 
 			#THE OBSTACLE IS IN FRONT THE ROBOT
-			if obsInFront:
+			if rad1 >= 0 and rad2 <= 0:
 				if math.sqrt(2.0 * minorDistance * self.AMAXV) < v:
 					return False
-
-				newArrayr1 = np.where(arrayRad > 0, arrayRad, 100000)
-				rad1 = np.amin(newArrayr1) - self.SIZEROBOT
-
 				
-				rad1Forbidden = (r >= rad1) if r > 0 else rad1 >= r
+				# print(allRad)
+				newArrayr1 = np.where(arrayRad > 0, arrayRad, 100000)
+				# print("min: ", np.amin(newArrayr1))
+				rad1 = (np.amin(newArrayr1) - self.SIZEROBOT) if (np.amin(newArrayr1) - self.SIZEROBOT) >= 0 else 0.0
+				
+				rad1Forbidden = ((r) >= rad1) if r > 0 else rad1 >= ( r )
 
 				newArrayr2 = np.where(arrayRad < 0, arrayRad, -100000)
-				rad2 = np.amax(newArrayr2) + self.SIZEROBOT
+				rad2 = (np.amax(newArrayr2) + self.SIZEROBOT ) if (np.amax(newArrayr2) + self.SIZEROBOT ) <= 0 else 0.0
 
-				rad2Forbidden = (rad2 >= r) if r < 0 else rad2 <= r
+				rad2Forbidden = (rad2 >= ( r )) if r < 0 else rad2 <= ( r )
+
+				# print("rad1: ", rad1, " rad2: ", rad2, " r: ", r, " v:", v, " w: ", w)
+				# print("forn: ", rad1Forbidden and rad2Forbidden)
 
 
 
 			#THE OBSTACLE IS DOWN THE ROBOT
-			elif obsDown:
+			elif rad1 <= 0 and rad2 <= 0:
 				if w > 0:
 					arrayThetaPos = np.where(arrayTh >= 0, arrayTh, 100000)
 					minorThetaPos = np.amin(arrayThetaPos)
@@ -339,10 +339,12 @@ class TestNode:
 					arrayThetaNeg = np.where(arrayTh <= 0, arrayTh, -100000)
 					minorThetaNeg = np.amax(arrayThetaNeg)
 
+					# print("Dminor- : ", minorThetaNeg, " minor+: ", minorThetaPos, " v: ", v, " w: ", w)
 					return v/minorThetaPos < self.WMAX and abs(v/minorThetaNeg) < w
 				
 				if w == 0:
 					continueStraight = polar[len(polar) - 1][1] < np.deg2rad(-35)
+					# print("Dangle: ", np.rad2deg(polar[len(polar) - 1][1]))
 					return continueStraight
 				else:
 					if math.sqrt(2.0 * minorDistance * self.AMAXV) < v:
@@ -356,11 +358,14 @@ class TestNode:
 					rad1Forbidden = r <= rad1
 					rad2Forbidden = r >= rad2
 
+					# print("Drad1: ", rad1, " rad2: ", rad2, " r: ", r, " v: ",v, " w: ", w)
+					# print("forb: ", rad1Forbidden and rad2Forbidden)
+
 					
 
 
 			#THE OBSTACLE IS UP THE ROBOT
-			elif obsUp:
+			elif rad1 >= 0 and rad2 >= 0:
 				if w < 0:
 					arrayThetaPos = np.where(arrayTh >= 0, arrayTh, 100000)
 					minorThetaPos = np.amin(arrayThetaPos)
@@ -368,8 +373,10 @@ class TestNode:
 					arrayThetaNeg = np.where(arrayTh <= 0, arrayTh, -100000)
 					minorThetaNeg = np.amax(arrayThetaNeg)
 
+					# print("Uminor- : ", minorThetaNeg, " minor+: ", minorThetaPos, " v: ", v, " w: ", w)
 					return v/minorThetaNeg > self.WMIN and v/minorThetaPos < abs(w)
 				if w == 0:
+					# print("Uangle: ", np.rad2deg(polar[0][1]))
 					return polar[0][1] > np.deg2rad(35)
 
 				
@@ -383,6 +390,8 @@ class TestNode:
 
 					rad1Forbidden = r <= rad1
 					rad2Forbidden = r >= rad2
+					# print("U rad1: ", rad1, " rad2: ", rad2, " r: ", r, " v: ",v, " w: ", w)
+					# print("forb: ", rad1Forbidden and rad2Forbidden)
 
 
 			else:
@@ -479,7 +488,7 @@ class TestNode:
 				w = 0 if abs(w) < 0.001 and abs(w) > 0 else round(w,3)
 				if w > maxW:
 					break
-				if v < self.VMIN or w < round(self.WMIN,3) or w > round(self.WMAX,3):
+				if v < self.VMIN or w < round(self.WMIN,3) or w > round(self.WMAX,3) or v > self.VMAX:
 					dWA[i][j] = self.OUT
 					posibilities[i][j] = 0
 					j += 1
@@ -684,93 +693,99 @@ class TestNode:
 		t5 = time.clock_gettime(time.CLOCK_REALTIME)
 		x = odom.pose.pose.position.x
 		y = odom.pose.pose.position.y
-		th = odom.pose.pose.orientation.z
+		ths = odom.pose.pose.orientation
+		
+		thsList = [ths.x, ths.y, ths.z, ths.w]
+		(_, _, th) = euler_from_quaternion (thsList)
 
 		self.locRobot = np.array([x, y, th])
 		# Desired Velocities
 		desired_v = desired_vel.twist.linear.x																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																							
 		desired_w = desired_vel.twist.angular.z
-		# if scan.ranges != self.BEFORE:
+		if desired_v != 0 or desired_w != 0:
 		
-		# Actual Velocities (deseada)
-		# vAct = odom.twist.twist.linear.x if odom.twist.twist.linear.x > 0.0 or odom.twist.twist.linear.x < 0.0 else desired_v
-		# wAct = odom.twist.twist.angular.z if odom.twist.twist.angular.z > 0.0 or odom.twist.twist.angular.z < 0.0 else desired_w
-		
-		#Wait until the another thread is wake
-		self.lock.acquire()
-		wake = self.wake
-		self.lock.release()
-
-		while not wake:
-			self.VBEF = 0
-			self.WBEF = 0
+			# Actual Velocities (deseada)
+			# vAct = odom.twist.twist.linear.x if odom.twist.twist.linear.x > 0.0 or odom.twist.twist.linear.x < 0.0 else desired_v
+			# wAct = odom.twist.twist.angular.z if odom.twist.twist.angular.z > 0.0 or odom.twist.twist.angular.z < 0.0 else desired_w
+			
+			#Wait until the another thread is wake
 			self.lock.acquire()
 			wake = self.wake
 			self.lock.release()
-			time.sleep(0.1)
 
-		#distance = 0.65
-		# Save the distances that the LaserScan catch
-		scan_ranges = np.array(scan.ranges)
-		# print(scan.ranges)
-		# print("BEF: ", self.BEFORE)
-		# print(scan.ranges == self.BEFORE)
-		middle = np.array(scan_ranges[478:600])
-		top = np.array(scan_ranges[601:])
-		bottom = np.array(scan_ranges[:477])
+			while not wake:
+				self.VBEF = 0
+				self.WBEF = 0
+				self.lock.acquire()
+				wake = self.wake
+				self.lock.release()
+				time.sleep(0.1)
 
-		distanceAngles = 2.5
+			#distance = 0.65
+			# Save the distances that the LaserScan catch
+			scan_ranges = np.array(scan.ranges)
+			# print(scan.ranges)
+			# print("BEF: ", self.BEFORE)
+			# print(scan.ranges == self.BEFORE)
+			middle = np.array(scan_ranges[478:600])
+			top = np.array(scan_ranges[601:])
+			bottom = np.array(scan_ranges[:477])
 
-		# print("										>",scan_ranges[540])
+			distanceAngles = 2.5
 
-		th = np.arange(-self.ANGLE_VISION/2, self.ANGLE_VISION/2 + distanceAngles, distanceAngles)
-		
-		# Create a array with the minimum distance of the 10 positions and add the angle 
-		scan_sub = np.array([[np.amin(scan_ranges[(k-10):k]), th[int((k/10) - 1)]] for k in np.arange(10, len(scan_ranges) + 19, 10)])
-		# print(scan_sub)
-		scan_deletes, newObs = [], []
-		last_deg = -self.ANGLE_VISION/2
-		begin = False
+			# print("										>",scan_ranges[540])
 
-		# Subdivide the last array depend on the number of obstacles looked
-		for s in scan_sub:
-			# If the distance is 
-			if s[0] - self.SIZEROBOT<= self.MAXDISTANCE:
-				if not begin:
-					newObs = []
-					begin = True
-				newObs += [[s[0] , np.deg2rad(s[1])]]
-			else:
-				if begin:
-					scan_deletes += [newObs]
-					begin = False
+			th = np.arange(-self.ANGLE_VISION/2, self.ANGLE_VISION/2 + distanceAngles, distanceAngles)
+			
+			# Create a array with the minimum distance of the 10 positions and add the angle 
+			scan_sub = np.array([[np.amin(scan_ranges[(k-10):k]), th[int((k/10) - 1)]] for k in np.arange(10, len(scan_ranges) + 19, 10)])
+			# print(scan_sub)
+			scan_deletes, newObs = [], []
+			last_deg = -self.ANGLE_VISION/2
+			begin = False
 
-		if len(newObs) > 0 and begin:
-			scan_deletes += [newObs]
+			# Subdivide the last array depend on the number of obstacles looked
+			for s in scan_sub:
+				# If the distance is 
+				if s[0] - self.SIZEROBOT<= self.MAXDISTANCE:
+					if not begin:
+						newObs = []
+						begin = True
+					newObs += [[s[0] , np.deg2rad(s[1])]]
+				else:
+					if begin:
+						scan_deletes += [newObs]
+						begin = False
 
-		
-		t6 = time.clock_gettime(time.CLOCK_REALTIME)
-		posibilities = TestNode.velocities(self, self.VBEF, self.WBEF, scan_deletes)
-		# print("t6: ", time.clock_gettime(time.CLOCK_REALTIME) - t6)
-		
-		#t6 = time.clock_gettime(time.CLOCK_REALTIME)
-		v, w = TestNode.searchVelocities(self, desired_v, desired_w, posibilities)
-		#print("t7: ", time.clock_gettime(time.CLOCK_REALTIME) - t6)
-		print("v: ", v, ", w: ",w )
-		self.VBEF = v
-		self.WBEF = w
+			if len(newObs) > 0 and begin:
+				scan_deletes += [newObs]
 
-		# v = desired_v
-		# w = desired_w
+			
+			t6 = time.clock_gettime(time.CLOCK_REALTIME)
+			posibilities = TestNode.velocities(self, self.VBEF, self.WBEF, scan_deletes)
+			# print("t6: ", time.clock_gettime(time.CLOCK_REALTIME) - t6)
+			
+			#t6 = time.clock_gettime(time.CLOCK_REALTIME)
+			v, w = TestNode.searchVelocities(self, desired_v, desired_w, posibilities)
+			#print("t7: ", time.clock_gettime(time.CLOCK_REALTIME) - t6)
+			print("v: ", v, ", w: ",w )
+			self.VBEF = v
+			self.WBEF = w
 
-		# v, w = TestNode.skipObstacle(self,scan_ranges, middle, top, bottom, desired_v, desired_w, distance)																																																				
-		# print("t5: ", time.clock_gettime(time.CLOCK_REALTIME) - t5)
-		self.BEFORE = scan.ranges
+			# v = desired_v
+			# w = desired_w
+
+			# v, w = TestNode.skipObstacle(self,scan_ranges, middle, top, bottom, desired_v, desired_w, distance)																																																				
+			# print("t5: ", time.clock_gettime(time.CLOCK_REALTIME) - t5)
+			self.BEFORE = scan.ranges
+		else:
+			v = desired_v
+			w = desired_w
 		# else:
 		# v = self.VBEF
 		# w = self.WBEF
 		#print("t5: ", time.clock_gettime(time.CLOCK_REALTIME) - t5)
-		# input("continue")
+		#input("continue")
 		self.send_vel(v,w)
 		#rospy.loginfo(rospy.get_caller_id() + "Min range %f", np.minimum(scan_ranges))
 
