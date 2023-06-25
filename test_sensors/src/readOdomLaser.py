@@ -307,7 +307,6 @@ class TestNode:
 		if len(allRad) > 0:
 			arrayRad = np.asarray(allRad)
 			arrayTh = np.asarray(allThetas)
-			arrayTh2 = np.asarray(allThetas2)
 			arrayDist = np.asarray(allDistancesR2)
 			arrayDist = np.where(arrayDist >= 0, arrayDist, 100000)
 			minorDistance = np.amin(arrayDist)
@@ -337,10 +336,10 @@ class TestNode:
 			#THE OBSTACLE IS DOWN THE ROBOT
 			elif rad1 <= 0 and rad2 <= 0:
 				if w > 0:
-					arrayThetaPos = np.where(arrayTh >= 0, arrayTh, 100000)
+					arrayThetaPos = np.where(arrayTh > 0, arrayTh, 100000)
 					minorThetaPos = np.amin(arrayThetaPos)
 
-					arrayThetaNeg = np.where(arrayTh <= 0, arrayTh, -100000)
+					arrayThetaNeg = np.where(arrayTh < 0, arrayTh, -100000)
 					minorThetaNeg = np.amax(arrayThetaNeg)
 
 					# print("Dminor- : ", minorThetaNeg, " minor+: ", minorThetaPos, " v: ", v, " w: ", w)
@@ -371,10 +370,10 @@ class TestNode:
 			#THE OBSTACLE IS UP THE ROBOT
 			elif rad1 >= 0 and rad2 >= 0:
 				if w < 0:
-					arrayThetaPos = np.where(arrayTh >= 0, arrayTh, 100000)
+					arrayThetaPos = np.where(arrayTh > 0, arrayTh, 100000)
 					minorThetaPos = np.amin(arrayThetaPos)
 
-					arrayThetaNeg = np.where(arrayTh <= 0, arrayTh, -100000)
+					arrayThetaNeg = np.where(arrayTh < 0, arrayTh, -100000)
 					minorThetaNeg = np.amax(arrayThetaNeg)
 
 					# print("Uminor- : ", minorThetaNeg, " minor+: ", minorThetaPos, " v: ", v, " w: ", w)
@@ -727,7 +726,7 @@ class TestNode:
 				self.lock.release()
 				time.sleep(0.1)
 
-			#distance = 0.65
+			distance = 0.65
 			# Save the distances that the LaserScan catch
 			scan_ranges = np.array(scan.ranges)
 			# print(scan.ranges)
@@ -753,7 +752,7 @@ class TestNode:
 			# Subdivide the last array depend on the number of obstacles looked
 			for s in scan_sub:
 				# If the distance is 
-				if s[0] - self.SIZEROBOT<= self.MAXDISTANCE:
+				if s[0] - self.SIZEROBOT<= distance:
 					if not begin:
 						newObs = []
 						begin = True
@@ -790,7 +789,7 @@ class TestNode:
 		# else:
 		# v = self.VBEF
 		# w = self.WBEF
-		#print("t5: ", time.clock_gettime(time.CLOCK_REALTIME) - t5)
+		# print("t5: ", time.clock_gettime(time.CLOCK_REALTIME) - t5)
 		#input("continue")
 		self.send_vel(v,w)
 		#rospy.loginfo(rospy.get_caller_id() + "Min range %f", np.minimum(scan_ranges))
