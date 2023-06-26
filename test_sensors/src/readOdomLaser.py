@@ -241,8 +241,8 @@ class TestNode:
 				theta = math.atan2((2 * r1XO[0] * r1XO[1]), (r1XO[0]**2 - r1XO[1]**2))
 				distance = abs(radius * theta)
 			
-			if distance < self.SIZEROBOT:
-				return False
+			# if distance < self.SIZEROBOT:
+			# 	return False
 			# if v == 0.05 and abs(w) == 0.262:
 			# 	print(radius)
 			
@@ -313,6 +313,9 @@ class TestNode:
 
 			#THE OBSTACLE IS IN FRONT THE ROBOT
 			if rad1 >= 0 and rad2 <= 0:
+				# if ((minorDistance - (self.AMAXV* dt) / 2)) < v:
+				# 	return False
+				
 				if math.sqrt(2.0 * minorDistance * self.AMAXV) < v:
 					return False
 				
@@ -350,6 +353,9 @@ class TestNode:
 					# print("Dangle: ", np.rad2deg(polar[len(polar) - 1][1]))
 					return continueStraight
 				else:
+					# if ((minorDistance - (self.AMAXV* dt) / 2)) < v:
+					# 	return False
+					
 					if math.sqrt(2.0 * minorDistance * self.AMAXV) < v:
 						return False
 
@@ -384,6 +390,8 @@ class TestNode:
 
 				
 				else:
+					# if ((minorDistance - (self.AMAXV* dt) / 2)) < v:
+					# 	return False
 					if math.sqrt(2.0 * minorDistance * self.AMAXV) < v:
 						return False
 
@@ -404,7 +412,7 @@ class TestNode:
 		forbidden = rad1Forbidden and rad2Forbidden
 
 		if forbidden and minorDistance != 100000:
-			forbidden = ((minorDistance - self.AMAXV* dt) / 2) < v
+			forbidden = ((minorDistance - (self.AMAXV* dt) / 2)) < v
 
 		return not forbidden
 		
@@ -674,6 +682,7 @@ class TestNode:
 			windowSize += 1
 		
 		if not foundAllowed:
+			print("FRENADA")
 			vRet = round(self.VBEF - self.AMAXV * dt, 2)
 			if self.OBSDOWN or (self.OBSINFRONT and self.WBEF > 0):
 				wRet = round(self.WBEF + self.AMAXW * dt, 3)
@@ -726,7 +735,7 @@ class TestNode:
 				self.lock.release()
 				time.sleep(0.1)
 
-			distance = 0.65
+			distance = 1.4
 			# Save the distances that the LaserScan catch
 			scan_ranges = np.array(scan.ranges)
 			# print(scan.ranges)
@@ -744,7 +753,7 @@ class TestNode:
 			
 			# Create a array with the minimum distance of the 10 positions and add the angle 
 			scan_sub = np.array([[np.amin(scan_ranges[(k-10):k]), th[int((k/10) - 1)]] for k in np.arange(10, len(scan_ranges) + 19, 10)])
-			# print(scan_sub)
+			#print(scan_sub)
 			scan_deletes, newObs = [], []
 			last_deg = -self.ANGLE_VISION/2
 			begin = False
@@ -765,7 +774,7 @@ class TestNode:
 			if len(newObs) > 0 and begin:
 				scan_deletes += [newObs]
 
-			
+			#print(scan_deletes)
 			t6 = time.clock_gettime(time.CLOCK_REALTIME)
 			posibilities = TestNode.velocities(self, self.VBEF, self.WBEF, scan_deletes)
 			# print("t6: ", time.clock_gettime(time.CLOCK_REALTIME) - t6)
@@ -773,7 +782,6 @@ class TestNode:
 			#t6 = time.clock_gettime(time.CLOCK_REALTIME)
 			v, w = TestNode.searchVelocities(self, desired_v, desired_w, posibilities)
 			#print("t7: ", time.clock_gettime(time.CLOCK_REALTIME) - t6)
-			print("v: ", v, ", w: ",w )
 			self.VBEF = v
 			self.WBEF = w
 
@@ -781,7 +789,7 @@ class TestNode:
 			# w = desired_w
 
 			# v, w = TestNode.skipObstacle(self,scan_ranges, middle, top, bottom, desired_v, desired_w, distance)																																																				
-			# print("t5: ", time.clock_gettime(time.CLOCK_REALTIME) - t5)
+			#print("t5: ", time.clock_gettime(time.CLOCK_REALTIME) - t5)
 			self.BEFORE = scan.ranges
 		else:
 			v = desired_v

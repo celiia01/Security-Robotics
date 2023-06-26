@@ -53,39 +53,49 @@ class VelPub:
 
 		rTG = np.linalg.inv(wTR) @ wTG
 		rXG = loc(rTG)
-		# print(rXG)
+		#print(rXG)
 		if abs(rXG[0]) > 0.15 or abs(rXG[1]) > 0.15:
-			
-			radius = (rXG[0]**2 + rXG[1]**2) / (2 * rXG[1])
-			if abs(radius) <= vFixed/self.WCHANGE:
+			# IF THE GOAL IS UPPER OR DOWN TO THE ROBOT
+			if rXG[1]!= 0:
+				radius = (rXG[0]**2 + rXG[1]**2) / (2 * rXG[1])
+			else:
+				radius = 0
+
+			# THE RADIOUS MUST BE LESS THAN THE MAXIMUM PERMITED BY VFIXED
+			if abs(radius) <= vFixed/self.WCHANGE and radius != 0:
 				w = vFixed / radius
 				#print("CHANGE: ", radius)
 			else:
+				# THE RADIOUS IS MORE, SO WE CHOSE THE MINOR ANGULAR VELOCITY TO GET CLOSER
 				w = -self.WCHANGE if radius < 0 else self.WCHANGE
+				w = 0 if radius == 0 else w
 
 			if (t - self.TIME) > 0.2:
+				# WHEN IT PASS MORE THAN 0.2 SECONDS, READODOMONLASER TAKES AROUND 0.2 SECONDS TO ACTUALIZATE
 				if self.robot_x == self.XROBOTBEF and self.robot_y == self.YROBOTBEF:
+					# IF IT CONTINUE IN THE SAME POSITION, IT IS STUCKING IN, SO WE SEND A VELOCITY ANGULAR OF 0 
+					# (IT IS THE MIDDLE OF THE VELOCITIES ANGULARS)
 					w = 0
 					self.ESTANCADO = True
 				else:
 					self.ESTANCADO = False
 				self.TIME = t
 				
-			# print(self.WBEFORE, w, self.CHANGE)
-			# if abs(self.WBEFORE) == abs(w) and self.WBEFORE != w and not self.CHANGE:
-			# 	print("ENTOR")
-			# 	w = 0
 
+			# THE GOAL IS IN FRONT OF THE ROBOT
 			if abs(rXG[1]) < 0.1 and abs(rXG[2]) < 0.1:
 				w = 0
+			# MAKING TEST--- IF THE GOAL IS CLOSEST ON THE X AXES AND THE ROBOT IS NOT ORIENTADED
 			if abs(rXG[0]) < 0.1 and abs(rXG[2]) < 0.1:
 				vFixed = 0
 				w = math.pi if rXG[1] > 0 else -math.pi
 				#print("GIRA")
+			#MAKING TEST ---- THE GOAL IS IN THE CENTER OF THE RADIUS
 			if w != 0 and ( abs(vFixed / w - rXG[1]) < 0.1  or abs(vFixed / w - rXG[0]) < 0.1)and abs(w) == math.pi:
 				vFixed -= 0.1
 				#print(".1")
 			
+			# IF THE ROBOT CONTINUE STUCKED IN
 			if self.ESTANCADO:
 				w = 0
 		
@@ -98,6 +108,7 @@ class VelPub:
 			self.XROBOTBEF = self.robot_x
 			self.YROBOTBEF = self.robot_y
 		else:
+			#THE ROBOT IS IN THE GOAL OR VERY CLOSE
 			msg.twist.linear.x = 0
 			msg.twist.angular.z = 0
 		
@@ -105,10 +116,6 @@ class VelPub:
 		self.pub.publish(msg)
 		# print("publisher: ", time.clock_gettime(time.CLOCK_REALTIME) - t)
 		
-		# timeAct = time.clock_gettime(time.CLOCK_REALTIME)
-		# while (time.clock_gettime(time.CLOCK_REALTIME) - timeAct < 1):
-		# 	msg.header.stamp = rospy.Time.now()
-		# 	self.pub.publish(msg)
 		
 		
 
