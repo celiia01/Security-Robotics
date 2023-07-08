@@ -189,7 +189,6 @@ class TestNode:
 			theta = math.atan2((2 * r1XO[0] * r1XO[1]), (r1XO[0]**2 - r1XO[1]**2))
 			distance = abs(radius * theta) - self.SIZEROBOT
 		
-		# print("distance: ", distance)
 		pairVelocities = []
 		if distance < 0:
 			for v in np.arange(self.VMAX, self.VMIN, -self.VCHANGE/2):
@@ -204,11 +203,16 @@ class TestNode:
 		cociente = int(maximumV/self.VCHANGE)
 		maxV = round(cociente * self.VCHANGE, 2)
 		# print("maxV: ", maxV)
+		
 		if maxV <= self.VMAX:
 			pairVelocities.append([maxV, w])
+			pairVelocities.append([maxV, (maxV/(radius + self.SIZEROBOT))])
+			pairVelocities.append([maxV, (maxV/(radius - self.SIZEROBOT))])
 
 			for v in np.arange(self.VMAX, maxV, -self.VCHANGE/2):
 				pairVelocities.append([round(v,2), round(v/radius,3)])
+				pairVelocities.append([round(v,2), round(v/(radius + self.SIZEROBOT),3)])
+				pairVelocities.append([round(v,2), round(v/(radius - self.SIZEROBOT),3)])
 
 		
 		return pairVelocities
@@ -238,78 +242,65 @@ class TestNode:
 		limitWLow = round(wAct - self.AMAXW * self.timeCall, 3)
 		limitWUp = round(wAct + self.AMAXW * self.timeCall, 3)
 
-		# minV, maxV, minW, maxW = limitVLow, limitVUp, limitWLow, limitWUp
-		# if (limitVLow % self.VCHANGE) != 0:
-		# 	if vAct >= 0 and limitVLow <= 0:
-		# 		cociente = int(limitVLow/self.VCHANGE)
-		# 		minV = round(cociente * self.VCHANGE, 2)
-		# 	else:
-		# 		cociente = int((vAct - limitVLow )/self.VCHANGE)
-		# 		minV = round(vAct - cociente * self.VCHANGE, 2)
 
-		# if (limitVUp % self.VCHANGE) != 0:
-		# 	cociente = int(limitVUp/self.VCHANGE)
-		# 	maxV = round(cociente * self.VCHANGE, 2)
-
-		# if (limitWLow % self.WCHANGE) != 0:
-		# 	if wAct >= 0.0 and limitWLow <= 0.0:
-		# 		cociente = int(limitWLow/self.WCHANGE)
-		# 		minW = round(cociente * self.WCHANGE, 3)
-		# 	else: 
-		# 		cociente = int((wAct - limitWLow)/self.WCHANGE)
-		# 		minW = round(wAct - cociente * self.WCHANGE, 3)
-
-		# if (limitWUp % self.WCHANGE) != 0:
-		# 	if wAct >= 0.0 or (wAct > 0 and limitWUp <= 0.0):
-		# 		cociente = int(limitWUp/self.WCHANGE)
-		# 		maxW = round(cociente * self.WCHANGE,3)
-		# 	else:
-		# 		cociente = int((limitWUp - wAct) /self.WCHANGE)
-		# 		maxW = round( wAct + cociente * self.WCHANGE, 3)
-
-		minWCasilla = (self.Y / 2) + round(limitWLow / self.WCHANGE)
-		maxWCasilla = (self.Y / 2) + round(limitWUp / self.WCHANGE)
-		maxVCasilla = (round(self.VMAX/self.VCHANGE)) - round(limitVLow / self.VCHANGE)
-		minVCasilla = (round(self.VMAX/self.VCHANGE)) - round(limitVUp / self.VCHANGE)
-
-		# print("minW: ", minWCasilla, " maxW: ", maxWCasilla, " minV: ", minVCasilla, " maxV: ", maxVCasilla)
+		minWCasilla = int((self.Y / 2) + round(limitWLow / self.WCHANGE))
+		maxWCasilla = int((self.Y / 2) + round(limitWUp / self.WCHANGE))
+		maxVCasilla = int((round(self.VMAX/self.VCHANGE)) - round(limitVLow / self.VCHANGE))
+		minVCasilla = int((round(self.VMAX/self.VCHANGE)) - round(limitVUp / self.VCHANGE))
 
 		x = int(round((maxVCasilla - minVCasilla), 0)) + 1
 		y = int(round((maxWCasilla - minWCasilla), 0)) + 1
+		dWA = np.zeros([x,y])
+
+		i = 0
+		if minVCasilla < 0:
+			for h in range(minVCasilla,0):
+				for j in range(0,y):
+					dWA[i][j] = self.OUT
+				
+				i += 1
+
+		i = x - 1
+		if maxVCasilla > (round(self.VMAX/self.VCHANGE)):
+			for h in range(int(round(self.VMAX/self.VCHANGE)), maxVCasilla):
+				for j in range(0,y):
+					dWA[i][j] = self.OUT
+				i -= 1
+
+		j = 0
+		if minWCasilla < 0:
+			for h in range(minWCasilla, 0):
+				for i in range(0,x):
+					dWA[i][j] = self.OUT
+			j += 1
+
+		j = y - 1
+		if maxWCasilla > int(self.Y / 2):
+			for h in range(int(self.Y / 2), maxWCasilla):
+				for i in range(0, x):
+					print(i,j)
+					dWA[i][j] = self.OUT
+			j -= 1
 	
 		self.lock.acquire()
 		self.maxV, self.minV = self.VMAX - minVCasilla * self.VCHANGE, self.VMAX - maxVCasilla * self.VCHANGE
 		self.minW, self.maxW = (minWCasilla -(self.Y / 2)) * self.WCHANGE, (maxWCasilla - (self.Y / 2)) * self.WCHANGE
-		# print("minV: ", round(self.minV,2), "maxV: ", round(self.maxV,2))
 		#POSITION ACTUAL
 		pos1 = self.locRobot
 		dt = self.timeCall
 		self.lock.release()
 
-		dWA = np.zeros([x,y])
 		t1 = time.clock_gettime(time.CLOCK_REALTIME)
 
 		for d in scan_sub:
-			# print("D: ", d)
 			pairVelocities = self.velocityAdmissible(d, pos1)
-			# print("pair: ", pairVelocities)
-			# print("vAct: ", vAct, " wAct: ", wAct)
-			# print("limitWLOw: ", limitWLow, " LIMITWUP: ", limitWUp, " limitVLow: ", limitVLow, " limitVUp: ", limitVUp)
-			# print("casillaWMIN: ", minWCasilla, " casillaWMax: ", maxWCasilla, " casillaVMin: ", minVCasilla, " casillaVMax: ", maxVCasilla)
 
 			for velocity in pairVelocities:
-				# print("vel: ", velocity)
 				casillaW = (self.Y / 2) + round(velocity[1] / self.WCHANGE)
 				casillaV = (round(self.VMAX/self.VCHANGE)) - round(velocity[0] / self.VCHANGE)
 				if casillaV <= maxVCasilla and casillaV >= minVCasilla and casillaW <= maxWCasilla and casillaW >= minWCasilla:
 					dWA[int(casillaV-minVCasilla)][int(casillaW-minWCasilla)] = self.FORBIDEN
-				# if velocity[0] < (maxVCasilla * self.VCHANGE) + self.VCHANGE/2 and (minVCasilla * self.VCHANGE) - self.VCHANGE/2 < velocity[1] and (maxWCasilla * self.WCHANGE) + self.WCHANGE/2 > velocity[1] and velocity[0] > (minWCasilla * self.WCHANGE) - self.WCHANGE/2:
-				# 	print("limitWLow: ", limitWLow, " limitWUp: ", limitWUp)
-				# 	print("resta_ ", limitWLow - velocity[1], " div: " ,(limitWLow - velocity[1])/self.WCHANGE)
-				# 	print("i: ", abs(int((limitVUp - velocity[0])/ self.VCHANGE)), " j: ", abs(int((limitWLow - velocity[1])/ self.WCHANGE)))
-					
-				# 	dWA[abs(int((limitVUp - velocity[0])/ self.VCHANGE))][abs(int((limitWLow - velocity[1])/ self.WCHANGE))] = self.FORBIDEN
-
+				
 		self.lock.acquire()
 		self.matrix = dWA
 		self.lock.release()
@@ -367,19 +358,24 @@ class TestNode:
 		'''
 		self.lock.acquire()
 		dt = self.timeCall
+		maxV = self.maxV
+		minW = self.minW
 		self.lock.release()
+
 		# LINE AND COLUMN OF THE DESIRED VELOCITY IN THE SPACE OF SPEEDS
 		line = int(np.round((self.VMAX - desired_v) / self.VCHANGE))
 		colDec = ( desired_w + self.WMAX) / self.WCHANGE
 		col = int(np.round(colDec))
 
-		# LINE AND COLUMN OF THE ACTUAL VELOCITY IN THE SPACE OF SPEEDS
-		lineAct = int(np.round((self.VMAX - self.VBEF) / self.VCHANGE))
-		colDecAct = ( self.WBEF + self.WMAX) / self.WCHANGE
+		# LINE AND COLUMN OF THE MINIMUM VELOCITIES IN THE SPACE OF SPEEDS
+		lineAct = int(np.round((self.VMAX - maxV) / self.VCHANGE))
+		colDecAct = ( minW + self.WMAX) / self.WCHANGE
 		colAct = int(np.round(colDecAct))
 
-		#SHAPE OF THE MATRIX
-		h,w = posibilities.shape
+		limitVLow = round(self.VBEF - self.AMAXV * self.timeCall, 2)
+		limitVUp = round(self.VBEF + self.AMAXV * self.timeCall, 2)
+		limitWLow = round(self.WBEF - self.AMAXW * self.timeCall, 3)
+		limitWUp = round(self.WBEF + self.AMAXW * self.timeCall, 3)
 
 		windowSize = 0
 
@@ -401,12 +397,13 @@ class TestNode:
 			index = np.where(window==self.FREE)
 			# CHANGE THE POSITIONS RELATIVE TO POSITIONS ABSOLUTES
 			for i in range(len(index[0])):
-				positionAbsoluteLine = index[0][i] - windowSize + lineAct
-				positionAbsoluteCol = index[1][i] - windowSize + colAct
+				positionAbsoluteLine = index[0][i] + lineAct
+				positionAbsoluteCol = index[1][i] + colAct
 				positions += [[positionAbsoluteLine, positionAbsoluteCol]]
 
 				#CALCULATE THE DISTANCES BETWEEN THIS POINT AND THE POINT OF THE DESIRED VELOCITY
 				distancesToDesired += [[math.sqrt((line - positionAbsoluteLine) **2+ (col - positionAbsoluteCol) ** 2)]]
+
 			# SELECT THE POINT WITH THE MINIMUM DISTANCE TO THE SELECTED
 			minimunDistance = np.amin(distancesToDesired)
 			searchingIndex = np.where(distancesToDesired == minimunDistance)[0][0]
@@ -415,7 +412,18 @@ class TestNode:
 			# VELOCITIES RELATED TO THE POSITION SELECTED
 			vRet = np.round((self.VMAX - selected[0] * self.VCHANGE), 2)
 			wRet = np.round(((selected[1] * self.WCHANGE) - self.WMAX), 3)
-			if vRet == 0.0 and wRet == 0.0:
+
+			if vRet > limitVUp:
+				vRet = limitVUp
+			elif vRet < limitVLow:
+				vRet = limitVLow
+				
+			if wRet > limitWUp:
+				wRet = limitWUp
+			elif wRet < limitWLow:
+				wRet = limitVLow
+
+			if vRet == 0.0 and wRet == 0.0 and (desired_v != 0 or desired_w != 0):
 				distancesToDesired[searchingIndex] = [np.inf]
 				# SELECT THE POINT WITH THE SECOND MINIMUM DISTANCE
 				minimunDistance = np.min(distancesToDesired)
@@ -426,7 +434,6 @@ class TestNode:
 				vRet = np.round((self.VMAX - selected[0] * self.VCHANGE), 2)
 				wRet = np.round(((selected[1] * self.WCHANGE) - self.WMAX), 3)
 
-		
 			foundAllowed = True
 		except:
 			windowSize += 1
@@ -434,10 +441,7 @@ class TestNode:
 		if not foundAllowed:
 			print("FRENADA")
 			vRet = round(self.VBEF - self.AMAXV * dt, 2)
-			if self.OBSDOWN or (self.OBSINFRONT and self.WBEF > 0):
-				wRet = round(self.WBEF + self.AMAXW * dt, 3)
-			elif self.OBSUP or (self.OBSINFRONT and self.WBEF < 0):
-				wRet = round(self.WBEF - self.AMAXW * dt, 3)
+			wRet = round(self.WBEF + self.AMAXW * dt, 3) if self.WBEF > 0 else round(self.WBEF - self.AMAXW * dt, 3)
 
 			if wRet > math.pi:
 				wRet = math.pi
@@ -497,41 +501,19 @@ class TestNode:
 
 			distanceAngles = 2.5
 
-			# print("										>",scan_ranges[540])
 
 			th = np.arange(-self.ANGLE_VISION/2, self.ANGLE_VISION/2 + distanceAngles, distanceAngles)
 			
 			# Create a array with the minimum distance of the 10 positions and add the angle 
 			scan_sub = np.array([[np.amin(scan_ranges[(k-10):k]), th[int((k/10) - 1)]] for k in np.arange(10, len(scan_ranges) + 19, 10)])
-			#print(scan_sub)
-			scan_deletes, newObs = [], []
-			last_deg = -self.ANGLE_VISION/2
-			begin = False
-
-			# Subdivide the last array depend on the number of obstacles looked
-			for s in scan_sub:
-				# If the distance is 
-				if s[0] - self.SIZEROBOT<= distance:
-					if not begin:
-						newObs = []
-						begin = True
-					newObs += [[s[0] , np.deg2rad(s[1])]]
-				else:
-					if begin:
-						scan_deletes += [newObs]
-						begin = False
-
-			if len(newObs) > 0 and begin:
-				scan_deletes += [newObs]
-
-			#print(scan_deletes)
+			
 			t6 = time.clock_gettime(time.CLOCK_REALTIME)
 			TestNode.velocities(self, self.VBEF, self.WBEF, scan_sub)
-			# print("t6: ", time.clock_gettime(time.CLOCK_REALTIME) - t6)
+
 			self.lock.acquire()
 			posibilities = self.matrix
 			self.lock.release()
-			#t6 = time.clock_gettime(time.CLOCK_REALTIME)
+
 			v, w = TestNode.searchVelocities(self, desired_v, desired_w, posibilities)
 			#print("t7: ", time.clock_gettime(time.CLOCK_REALTIME) - t6)
 			self.VBEF = v
