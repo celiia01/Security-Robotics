@@ -22,10 +22,7 @@ class TestNode:
 	# Types of velocities
 	FREE = 0
 	FORBIDEN = 1
-	DYNAMIC_WINDOW = 2
-	FEASIBLE = 3
-	ACTUAL = 4
-	OUT = 5
+	OUT = 2
 
 	#Maximun Accelerations
 	AMAXV = 0.7
@@ -50,10 +47,9 @@ class TestNode:
 	VBEF = 0.0
 	WBEF = 0.0
 
-	# List of previous distances obtainded by the LaserScan
-	BEFORE = []
-
-	OBSUP, OBSDOWN, OBSINFRONT = False, False, False
+	# NUmber of values of the matrix
+	Y = (WMAX - WMIN) / WCHANGE
+	X = (VMAX - VMIN) / VCHANGE
 
 	def __init__(self):
 		self.lidar_sub = message_filters.Subscriber('base_scan', LaserScan)
@@ -168,255 +164,56 @@ class TestNode:
 		'''
 		return np.array([distance[0] * np.cos(distance[1]), distance[0] * np.sin(distance[1]), distance[1]])
 	
+	def velocityAdmissible(self, polar, positionAct):
+		# TRABSFORM THE POLAR DSITANCES TO THE CARTESIANS ONE
+		r1XO = self.polar2Cartesian(polar)
 
-	def velocityAdmissible(self, v, w, polar):
-		'''
-			Return TRUE if the pair of velocities (v,w) are admissible for the obstacle, 
-			else FALSE
-		'''
-		if len(polar) == 2 and polar[0][1] == np.deg2rad(-self.ANGLE_VISION / 2) and polar[1][1] == np.deg2rad(self.ANGLE_VISION / 2):
-			return True
-		# print("v: ", v, ", w: ", w)
-		#POSITION ACTUAL
-		self.lock.acquire()
-		pos1 = self.locRobot
-		dt = self.timeCall
-		self.lock.release()
+		theta = 1
+		# CALCULO LAS DISTANCIAS A LOS DIFERENTES PUNTOS DEL OBSTACULO EN LA SIGUIENTE POSICIÓN DEL ROBOT
+		if r1XO[0] == 0 and r1XO[1] == 0:
+			radius = np.inf
+			distance = 0
+		#SI Y ES IGUAL A 0, NO  HAY ARCO 
+		elif r1XO[1] == 0:
+			radius = np.inf
+			distance = r1XO[0] - self.SIZEROBOT
 
-		# CON V Y W SACO LA NUEVA POSICIÓN DONDE ESTARÁ EL ROBOT
-		pos2 = self.nextPosition(v, w, pos1)
-		r1TR2 = hom(pos2)
-
-		# LOCALIZAR SI EL OBSTACULO ESTA ABAJO, ARRIBA O DELANTE
-		obsDown = polar[0][1] < 0 and polar[len(polar) - 1][1] < 0
-		obsUp = polar[0][1] > 0 and polar[len(polar) - 1][1] > 0
-		obsInFront = polar[0][1] <= 0 and polar[len(polar) - 1][1] >= 0
-
-		self.OBSDOWN, self.OBSUP, self.OBSINFRONT = obsDown, obsUp, obsInFront
-
-		# try:
-		# 	np.where(polar[:][1] == 0)
-		# 	obsInFront = obsInFront and True
-		# except:
-		# 	obsInFront = False
-
-		#PASO A COORDENADAS CARTESIANAS LAS COORDENADAS POLARES DE LOS OBSTACULOS
-		cartesians = np.array([self.polar2Cartesian(d) for d in polar])
-		# for c in cartesians:
-		# 	wTR1 = hom(pos1)
-		# 	print("o: ", loc(wTR1 @ hom(c)))
-		# if v == 0.05 and abs(w) == 0.262:
-		# 	print(cartesians)
-		rad1 = -np.inf
-		rad2 =  np.inf
-
-		allRad, allThetas, allThetas2 = [], [], []
-		allDistancesR2 = []
-
-
-		r = v/w if w != 0 else np.inf
-
-		for r1XO in cartesians:
-			r1TO = hom(r1XO)
-			# SACO LA POSICIÓN DEL OBSTACULO DEPENDIENDO DE LA NUEVA POSICIÓN DEL ROBOT
-			r2TO = np.linalg.inv(r1TR2) @ r1TO
-			r2XO = loc(r2TO)
-			theta = 0
-
-			# CALCULO EN LA POSICIÓN INICIAL QUE INTERVALOS DE VELOCIDADES PUEDEN SER TOMADAS
-			if r1XO[0] == 0 and r1XO[1] == 0:
-				radius = np.inf
-				distance = 0
-			#SI Y ES IGUAL A 0, NO  HAY ARCO 
-			elif r1XO[1] == 0:
-				radius = np.inf
-				distance = r1XO[0]
-			#SI X ES IGUAL A 0, NO HAY ARCO
-			elif r1XO[0] == 0:
-				radius = np.inf
-				distance = r1XO[1]
-			else:
-				#CALCULO EL RADIO Y LA THETA PARA ALCANZAR DICHA POSICIÓN
-				radius = ((r1XO[0])**2 + (r1XO[1])**2) / (2 * r1XO[1])
-				theta = math.atan2((2 * r1XO[0] * r1XO[1]), (r1XO[0]**2 - r1XO[1]**2))
-				distance = abs(radius * theta)
-			
-			# if distance < self.SIZEROBOT:
-			# 	return False
-			# if v == 0.05 and abs(w) == 0.262:
-			# 	print(radius)
-			
-			#DEPENDIENDO DE LA POSICIÓN DEL ROBOT OBTENGO EL MAYOR Y EL MENOR RADIO	
-			if obsInFront:
-				if rad1 < radius:
-					rad1 = radius
-				if rad2 > radius:
-					rad2 = radius
-			elif obsUp:
-				# #EL OBSTACULO ESTÁ MUY CERCA
-				# if distance < self.SIZEROBOT and w >= 0:
-				# 	return False
-				if rad1 < radius:
-					rad1 = radius
-				if rad2 > radius and radius >= 0:
-					rad2 = radius
-			elif obsDown:
-				# # EL OBSTACULO ESTA MUY CERCA
-				# if distance < self.SIZEROBOT and w <= 0:
-				# 	return False
-				if rad1 < radius and radius <= 0:
-					rad1 = radius
-				if rad2 > radius:
-					rad2 = radius
-
-					
-
-			allRad.append([radius])
-			allThetas.append([theta])
-
-
-			# CALCULO LAS DISTANCIAS A LOS DIFERENTES PUNTOS DEL OBSTACULO EN LA SIGUIENTE POSICIÓN DEL ROBOT
-			if r2XO[0] == 0 and r2XO[1] == 0:
-				radius = np.inf
-				distance = 0
-			#SI Y ES IGUAL A 0, NO  HAY ARCO 
-			elif r2XO[1] == 0:
-				radius = np.inf
-				distance = r2XO[0] - self.SIZEROBOT
-
-			#SI X ES IGUAL A 0, NO HAY ARCO
-			elif r2XO[0] == 0:
-				radius = np.inf
-				distance = r2XO[1] - self.SIZEROBOT
-			else:
-				#CALCULO EL RADIO Y LA THETA PARA ALCANZAR DICHA POSICIÓN
-				radius = ((r2XO[0]) ** 2 + (r2XO[1])**2) / (2 * r2XO[1])
-				theta = math.atan2((2 * r2XO[0] * r2XO[1]), (r2XO[0]**2 - r2XO[1]**2))
-				distance = abs(radius * theta) - self.SIZEROBOT
-
-			allThetas2.append([theta])
-			
-			# EN EL SIGUIENTE MOVIMIENTO EL OBSTACULO ESTÁ MUY CERCA, DEPENDIENDO DEL RADIO O DE LA VELOCIDAD ANGULAR
-			# SE DEVUELVE QUE NO ES ADMISIBLE POR ACERCARSE AL OBSTACULO
-			if distance < 0 and ((obsInFront and ( (radius > 0 and w > 0) or (radius < 0 and w < 0) or w == 0))
-									or (obsDown and w < 0) or (obsUp and w > 0)):
-				return False
-	
-			allDistancesR2.append([distance])
-
-		if len(allRad) > 0:
-			arrayRad = np.asarray(allRad)
-			arrayTh = np.asarray(allThetas)
-			arrayDist = np.asarray(allDistancesR2)
-			arrayDist = np.where(arrayDist >= 0, arrayDist, 100000)
-			minorDistance = np.amin(arrayDist)
-
-			#THE OBSTACLE IS IN FRONT THE ROBOT
-			if rad1 >= 0 and rad2 <= 0:
-				# if ((minorDistance - (self.AMAXV* dt) / 2)) < v:
-				# 	return False
-				
-				if math.sqrt(2.0 * minorDistance * self.AMAXV) < v:
-					return False
-				
-				# print(allRad)
-				newArrayr1 = np.where(arrayRad > 0, arrayRad, 100000)
-				# print("min: ", np.amin(newArrayr1))
-				rad1 = (np.amin(newArrayr1) - self.SIZEROBOT) if (np.amin(newArrayr1) - self.SIZEROBOT) >= 0 else 0.0
-				
-				rad1Forbidden = (r >= rad1) if r > 0 else rad1 >= r
-
-				newArrayr2 = np.where(arrayRad < 0, arrayRad, -100000)
-				rad2 = (np.amax(newArrayr2) + self.SIZEROBOT ) if (np.amax(newArrayr2) + self.SIZEROBOT ) <= 0 else 0.0
-
-				rad2Forbidden = (rad2 >=  r) if r < 0 else rad2 <= r
-
-				# print("rad1: ", rad1, " rad2: ", rad2, " r: ", r, " v:", v, " w: ", w)
-				# print("forn: ", rad1Forbidden and rad2Forbidden)
-
-
-
-			#THE OBSTACLE IS DOWN THE ROBOT
-			elif rad1 <= 0 and rad2 <= 0:
-				if w > 0:
-					arrayThetaPos = np.where(arrayTh > 0, arrayTh, 100000)
-					minorThetaPos = np.amin(arrayThetaPos)
-
-					arrayThetaNeg = np.where(arrayTh < 0, arrayTh, -100000)
-					minorThetaNeg = np.amax(arrayThetaNeg)
-
-					# print("Dminor- : ", minorThetaNeg, " minor+: ", minorThetaPos, " v: ", v, " w: ", w)
-					return v/minorThetaPos < self.WMAX and abs(v/minorThetaNeg) < w
-				
-				if w == 0:
-					continueStraight = polar[len(polar) - 1][1] < np.deg2rad(-35)
-					# print("Dangle: ", np.rad2deg(polar[len(polar) - 1][1]))
-					return continueStraight
-				else:
-					# if ((minorDistance - (self.AMAXV* dt) / 2)) < v:
-					# 	return False
-					
-					if math.sqrt(2.0 * minorDistance * self.AMAXV) < v:
-						return False
-
-					rad1 = (rad1 + self.SIZEROBOT) if (rad1 + self.SIZEROBOT) <= 0 else 0
-
-					rad2 = (rad2 - self.SIZEROBOT) if rad2 < 0 else (rad2 + self.SIZEROBOT)
-
-					
-					rad1Forbidden = r <= rad1
-					rad2Forbidden = r >= rad2
-
-					# print("Drad1: ", rad1, " rad2: ", rad2, " r: ", r, " v: ",v, " w: ", w)
-					# print("forb: ", rad1Forbidden and rad2Forbidden)
-
-					
-
-
-			#THE OBSTACLE IS UP THE ROBOT
-			elif rad1 >= 0 and rad2 >= 0:
-				if w < 0:
-					arrayThetaPos = np.where(arrayTh > 0, arrayTh, 100000)
-					minorThetaPos = np.amin(arrayThetaPos)
-
-					arrayThetaNeg = np.where(arrayTh < 0, arrayTh, -100000)
-					minorThetaNeg = np.amax(arrayThetaNeg)
-
-					# print("Uminor- : ", minorThetaNeg, " minor+: ", minorThetaPos, " v: ", v, " w: ", w)
-					return v/minorThetaNeg > self.WMIN and v/minorThetaPos < abs(w)
-				if w == 0:
-					# print("Uangle: ", np.rad2deg(polar[0][1]))
-					return polar[0][1] > np.deg2rad(35)
-
-				
-				else:
-					# if ((minorDistance - (self.AMAXV* dt) / 2)) < v:
-					# 	return False
-					if math.sqrt(2.0 * minorDistance * self.AMAXV) < v:
-						return False
-
-					rad1 = (rad1 + self.SIZEROBOT) if rad1 > 0 else (rad1 - self.SIZEROBOT)
-				
-					rad2 = (rad2 - self.SIZEROBOT) if (rad2 - self.SIZEROBOT) >= 0 else 0 
-
-					rad1Forbidden = r <= rad1
-					rad2Forbidden = r >= rad2
-					# print("U rad1: ", rad1, " rad2: ", rad2, " r: ", r, " v: ",v, " w: ", w)
-					# print("forb: ", rad1Forbidden and rad2Forbidden)
-
-
-			else:
-				print("WARNING|||1, ", v, ", ", w)
-				print("distances: ", polar)
-
-		forbidden = rad1Forbidden and rad2Forbidden
-
-		if forbidden and minorDistance != 100000:
-			forbidden = ((minorDistance - (self.AMAXV* dt) / 2)) < v
-
-		return not forbidden
+		#SI X ES IGUAL A 0
+		elif r1XO[0] == 0:
+			radius = r1XO[1]/2
+			theta = math.atan2(0, r1XO[1]**2)
+			distance = abs(radius * theta) -  self.SIZEROBOT
+		else:
+			#CALCULO EL RADIO Y LA THETA PARA ALCANZAR DICHA POSICIÓN
+			radius = ((r1XO[0]) ** 2 + (r1XO[1])**2) / (2 * r1XO[1])
+			theta = math.atan2((2 * r1XO[0] * r1XO[1]), (r1XO[0]**2 - r1XO[1]**2))
+			distance = abs(radius * theta) - self.SIZEROBOT
 		
-			
+		# print("distance: ", distance)
+		pairVelocities = []
+		if distance < 0:
+			for v in np.arange(self.VMAX, self.VMIN, -self.VCHANGE/2):
+				if v != self.VMIN:
+					pairVelocities.append([round(v,2), round(v/radius, 3)])
+
+			return pairVelocities
+		
+		maximumV = math.sqrt(2.0 * distance * self.VMAX)
+		w = maximumV/radius
+
+		cociente = int(maximumV/self.VCHANGE)
+		maxV = round(cociente * self.VCHANGE, 2)
+		# print("maxV: ", maxV)
+		if maxV <= self.VMAX:
+			pairVelocities.append([maxV, w])
+
+			for v in np.arange(self.VMAX, maxV, -self.VCHANGE/2):
+				pairVelocities.append([round(v,2), round(v/radius,3)])
+
+		
+		return pairVelocities
+
+	
 
 	def restrictionDWA(self, v, w, admissible, limitVLow, limitVUp, limitWLow, limitWUp):
 		'''
@@ -424,147 +221,100 @@ class TestNode:
 		'''
 		# Feasible velocities
 		if (admissible and v >= limitVLow and v <= limitVUp and w >= limitWLow and w <= limitWUp ):
-			return self.FEASIBLE
+			return self.FREE
 		# Dynamic Window
 		elif (not admissible and v >= limitVLow and v <= limitVUp and w >= limitWLow and w <= limitWUp):
-			return self.DYNAMIC_WINDOW
+			return self.FORBIDEN
 		# Forbidden Velocities
 		elif not admissible:
 			return self.FORBIDEN
 		else:
-			return 0
+			return self.FREE
 	
-
 	def velocities(self, vAct: float, wAct: float, scan_sub: np.array):
-		'''
-		Calculate the DWA's matrix and return a matrix with 1's in the allowed pair of velocities and 0's in the forbidden ones
-		'''
-
 		# Dynamically admissible velocities
 		limitVLow = round(vAct - self.AMAXV * self.timeCall, 2)
 		limitVUp = round(vAct + self.AMAXV * self.timeCall, 2)
 		limitWLow = round(wAct - self.AMAXW * self.timeCall, 3)
 		limitWUp = round(wAct + self.AMAXW * self.timeCall, 3)
 
-		minV, maxV, minW, maxW = limitVLow, limitVUp, limitWLow, limitWUp
-		if (limitVLow % self.VCHANGE) != 0:
-			if vAct >= 0 and limitVLow <= 0:
-				cociente = int(limitVLow/self.VCHANGE)
-				minV = round(cociente * self.VCHANGE, 2)
-			else:
-				cociente = int((vAct - limitVLow )/self.VCHANGE)
-				minV = round(vAct - cociente * self.VCHANGE, 2)
+		# minV, maxV, minW, maxW = limitVLow, limitVUp, limitWLow, limitWUp
+		# if (limitVLow % self.VCHANGE) != 0:
+		# 	if vAct >= 0 and limitVLow <= 0:
+		# 		cociente = int(limitVLow/self.VCHANGE)
+		# 		minV = round(cociente * self.VCHANGE, 2)
+		# 	else:
+		# 		cociente = int((vAct - limitVLow )/self.VCHANGE)
+		# 		minV = round(vAct - cociente * self.VCHANGE, 2)
 
-		if (limitVUp % self.VCHANGE) != 0:
-			cociente = int(limitVUp/self.VCHANGE)
-			maxV = round(cociente * self.VCHANGE, 2)
+		# if (limitVUp % self.VCHANGE) != 0:
+		# 	cociente = int(limitVUp/self.VCHANGE)
+		# 	maxV = round(cociente * self.VCHANGE, 2)
 
-		if (limitWLow % self.WCHANGE) != 0:
-			if wAct >= 0.0 and limitWLow <= 0.0:
-				cociente = int(limitWLow/self.WCHANGE)
-				minW = round(cociente * self.WCHANGE, 3)
-			else:
-				cociente = int((wAct - limitWLow)/self.WCHANGE)
-				minW = round(wAct - cociente * self.WCHANGE, 3)
+		# if (limitWLow % self.WCHANGE) != 0:
+		# 	if wAct >= 0.0 and limitWLow <= 0.0:
+		# 		cociente = int(limitWLow/self.WCHANGE)
+		# 		minW = round(cociente * self.WCHANGE, 3)
+		# 	else: 
+		# 		cociente = int((wAct - limitWLow)/self.WCHANGE)
+		# 		minW = round(wAct - cociente * self.WCHANGE, 3)
 
-		if (limitWUp % self.WCHANGE) != 0:
-			if wAct >= 0.0 or (wAct > 0 and limitWUp <= 0.0):
-				cociente = int(limitWUp/self.WCHANGE)
-				maxW = round(cociente * self.WCHANGE,3)
-			else:
-				cociente = int((limitWUp - wAct) /self.WCHANGE)
-				maxW = round( wAct + cociente * self.WCHANGE, 3)
+		# if (limitWUp % self.WCHANGE) != 0:
+		# 	if wAct >= 0.0 or (wAct > 0 and limitWUp <= 0.0):
+		# 		cociente = int(limitWUp/self.WCHANGE)
+		# 		maxW = round(cociente * self.WCHANGE,3)
+		# 	else:
+		# 		cociente = int((limitWUp - wAct) /self.WCHANGE)
+		# 		maxW = round( wAct + cociente * self.WCHANGE, 3)
 
-		x = int(round((maxV - minV) / self.VCHANGE, 0)) + 1
-		y = int(round((maxW - minW) / self.WCHANGE, 0)) + 1
+		minWCasilla = (self.Y / 2) + round(limitWLow / self.WCHANGE)
+		maxWCasilla = (self.Y / 2) + round(limitWUp / self.WCHANGE)
+		maxVCasilla = (round(self.VMAX/self.VCHANGE)) - round(limitVLow / self.VCHANGE)
+		minVCasilla = (round(self.VMAX/self.VCHANGE)) - round(limitVUp / self.VCHANGE)
+
+		# print("minW: ", minWCasilla, " maxW: ", maxWCasilla, " minV: ", minVCasilla, " maxV: ", maxVCasilla)
+
+		x = int(round((maxVCasilla - minVCasilla), 0)) + 1
+		y = int(round((maxWCasilla - minWCasilla), 0)) + 1
+	
 		self.lock.acquire()
-		self.minV, self.maxV = minV, maxV
-		self.minW, self.maxW = minW, maxW
+		self.maxV, self.minV = self.VMAX - minVCasilla * self.VCHANGE, self.VMAX - maxVCasilla * self.VCHANGE
+		self.minW, self.maxW = (minWCasilla -(self.Y / 2)) * self.WCHANGE, (maxWCasilla - (self.Y / 2)) * self.WCHANGE
+		# print("minV: ", round(self.minV,2), "maxV: ", round(self.maxV,2))
+		#POSITION ACTUAL
+		pos1 = self.locRobot
+		dt = self.timeCall
 		self.lock.release()
 
 		dWA = np.zeros([x,y])
-		posibilities = np.ones([x, y])
 		t1 = time.clock_gettime(time.CLOCK_REALTIME)
-		i = 0
-		j = 0
 
+		for d in scan_sub:
+			# print("D: ", d)
+			pairVelocities = self.velocityAdmissible(d, pos1)
+			# print("pair: ", pairVelocities)
+			# print("vAct: ", vAct, " wAct: ", wAct)
+			# print("limitWLOw: ", limitWLow, " LIMITWUP: ", limitWUp, " limitVLow: ", limitVLow, " limitVUp: ", limitVUp)
+			# print("casillaWMIN: ", minWCasilla, " casillaWMax: ", maxWCasilla, " casillaVMin: ", minVCasilla, " casillaVMax: ", maxVCasilla)
 
-		obstacle = False
-
-		for v in np.arange(maxV, minV - self.VCHANGE, -self.VCHANGE):
-			v = 0 if v > 0 and v < 0.01 else round(v, 2)
-			if v < minV:
-				break
-			for w in np.arange(minW, maxW + self.WCHANGE, self.WCHANGE):
-				w = 0 if abs(w) < 0.001 and abs(w) > 0 else round(w,3)
-				if w > maxW:
-					break
-				if v < self.VMIN or w < round(self.WMIN,3) or w > round(self.WMAX,3) or v > self.VMAX:
-					dWA[i][j] = self.OUT
-					posibilities[i][j] = 0
-					j += 1
-					continue
-				if v == 0.0:
-					if ((v == vAct or (v < vAct and round(v + self.VCHANGE, 2) > vAct)) and (w == wAct)):
-						dWA[i][j] = self.ACTUAL
-					else:
-						dWA[i][j] = self.FREE
-					j += 1
-					continue
-				obstacle = False
-				if v != 0.0 and len(scan_sub) != 0:
-					t3 = time.clock_gettime(time.CLOCK_REALTIME)
-					obstacle = True
-
-					admissible = True
-					for obs in scan_sub:
-						admissible = admissible and self.velocityAdmissible(v,w,obs)
-						
-					# t4 = time.clock_gettime(time.CLOCK_REALTIME) - t3
-					num = self.restrictionDWA(v, w, admissible, limitVLow, limitVUp, limitWLow, limitWUp)
+			for velocity in pairVelocities:
+				# print("vel: ", velocity)
+				casillaW = (self.Y / 2) + round(velocity[1] / self.WCHANGE)
+				casillaV = (round(self.VMAX/self.VCHANGE)) - round(velocity[0] / self.VCHANGE)
+				if casillaV <= maxVCasilla and casillaV >= minVCasilla and casillaW <= maxWCasilla and casillaW >= minWCasilla:
+					dWA[int(casillaV-minVCasilla)][int(casillaW-minWCasilla)] = self.FORBIDEN
+				# if velocity[0] < (maxVCasilla * self.VCHANGE) + self.VCHANGE/2 and (minVCasilla * self.VCHANGE) - self.VCHANGE/2 < velocity[1] and (maxWCasilla * self.WCHANGE) + self.WCHANGE/2 > velocity[1] and velocity[0] > (minWCasilla * self.WCHANGE) - self.WCHANGE/2:
+				# 	print("limitWLow: ", limitWLow, " limitWUp: ", limitWUp)
+				# 	print("resta_ ", limitWLow - velocity[1], " div: " ,(limitWLow - velocity[1])/self.WCHANGE)
+				# 	print("i: ", abs(int((limitVUp - velocity[0])/ self.VCHANGE)), " j: ", abs(int((limitWLow - velocity[1])/ self.WCHANGE)))
 					
-					# print("i: ", i ," j: ",j)
-					if num == self.FEASIBLE and dWA[i][j] != self.FORBIDEN and dWA[i][j] != self.DYNAMIC_WINDOW:
-						dWA[i][j] = num
-					elif num == self.DYNAMIC_WINDOW:
-						dWA[i][j] = num
-						posibilities[i][j] = 0
-					elif num == self.FORBIDEN and dWA[i][j] != self.DYNAMIC_WINDOW:
-						dWA[i][j] = num
-						posibilities[i][j] = 0
+				# 	dWA[abs(int((limitVUp - velocity[0])/ self.VCHANGE))][abs(int((limitWLow - velocity[1])/ self.WCHANGE))] = self.FORBIDEN
 
-					# t4 = time.clock_gettime(time.CLOCK_REALTIME) - t3
-
-				if not obstacle:
-
-					num = self.restrictionDWA(v, w, True, limitVLow, limitVUp, limitWLow, limitWUp)
-					
-
-					if num == self.FEASIBLE and dWA[i][j] != self.FORBIDEN and dWA[i][j] != self.DYNAMIC_WINDOW:
-						dWA[i][j] = num
-						
-					elif num == self.DYNAMIC_WINDOW:
-						dWA[i][j] = num
-						
-						posibilities[i][j] = 0
-					elif num == self.FORBIDEN and dWA[i][j] != self.DYNAMIC_WINDOW:
-						dWA[i][j] = num
-						posibilities[i][j] = 0
-						
-
-				# Actual Velocity
-				if ((v == vAct or (v < vAct and round(v + self.VCHANGE, 2) > vAct)) and (w == wAct)):
-					dWA[i][j] = self.ACTUAL
-				j += 1
-					
-
-			j = 0
-			i += 1
 		self.lock.acquire()
 		self.matrix = dWA
 		self.lock.release()
 		t2 = time.clock_gettime(time.CLOCK_REALTIME) - t1
-		return posibilities
+	
 	
 	def startPlot(self):
 		self.p = Process(target=self.plotDWA(), args=())
@@ -573,7 +323,7 @@ class TestNode:
 	def plotDWA(self):
 		fig, ax = plt.subplots()
 		minV, maxV, minW, maxW = 0.0 ,0.0, 0.0, 0.0
-		custom = colors.ListedColormap(["white", "red", "orange", "green", "yellow", "black"])
+		custom = colors.ListedColormap(["white", "red", "black"])
 	
 
 		while(True):
@@ -648,7 +398,7 @@ class TestNode:
 		window = posibilities
 
 		try:
-			index = np.where(window==1)
+			index = np.where(window==self.FREE)
 			# CHANGE THE POSITIONS RELATIVE TO POSITIONS ABSOLUTES
 			for i in range(len(index[0])):
 				positionAbsoluteLine = index[0][i] - windowSize + lineAct
@@ -776,14 +526,17 @@ class TestNode:
 
 			#print(scan_deletes)
 			t6 = time.clock_gettime(time.CLOCK_REALTIME)
-			posibilities = TestNode.velocities(self, self.VBEF, self.WBEF, scan_deletes)
+			TestNode.velocities(self, self.VBEF, self.WBEF, scan_sub)
 			# print("t6: ", time.clock_gettime(time.CLOCK_REALTIME) - t6)
-			
+			self.lock.acquire()
+			posibilities = self.matrix
+			self.lock.release()
 			#t6 = time.clock_gettime(time.CLOCK_REALTIME)
 			v, w = TestNode.searchVelocities(self, desired_v, desired_w, posibilities)
 			#print("t7: ", time.clock_gettime(time.CLOCK_REALTIME) - t6)
 			self.VBEF = v
 			self.WBEF = w
+			print("selected: ", v, w)
 
 			# v = desired_v
 			# w = desired_w
