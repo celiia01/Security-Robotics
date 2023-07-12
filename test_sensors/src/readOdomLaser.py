@@ -34,22 +34,26 @@ class TestNode:
 	WMAX = math.pi
 	WMIN = -math.pi
 
+	TIMECALL = 0.2
+
 	# Maximum distance for possible collision
 	MAXDISTANCE = AMAXW/2
 
-	SIZEROBOT = 0.2
+	SIZEROBOT = 0.15
 
 	# Value of the difference between the velocities chosen
-	VCHANGE = 0.05
-	WCHANGE = 15 * math.pi / 180.0
+	VCHANGE = (AMAXV * TIMECALL) / 3
+	WCHANGE = (AMAXW * TIMECALL) / 3
 
 	# Pair of previous speeds
 	VBEF = 0.0
 	WBEF = 0.0
 
 	# NUmber of values of the matrix
-	Y = (WMAX - WMIN) / WCHANGE
-	X = (VMAX - VMIN) / VCHANGE
+	X = (WMAX - WMIN) / WCHANGE
+	Y = (VMAX - VMIN) / VCHANGE
+
+	AVANCEDISTANCE = VCHANGE * TIMECALL
 
 	def __init__(self):
 		self.lidar_sub = message_filters.Subscriber('base_scan', LaserScan)
@@ -65,7 +69,7 @@ class TestNode:
 		self.lock = Lock()
 		self.trayectoria_top = False
 		self.trayectoria_bottom = False
-		self.timeCall = 0.2
+		self.timeCall = 0.15
 		#self.matrix = np.zeros((70,25))
 		self.matrix = np.zeros((7,7))
 		self.locRobot = np.array([-4.5, -6, 0])
@@ -159,7 +163,7 @@ class TestNode:
 
 			x = r * cos(th)
 			y = r * sin(th)
-			th = th
+			th = rad(th)
 
 		'''
 		return np.array([distance[0] * np.cos(distance[1]), distance[0] * np.sin(distance[1]), distance[1]])
@@ -189,31 +193,54 @@ class TestNode:
 			theta = math.atan2((2 * r1XO[0] * r1XO[1]), (r1XO[0]**2 - r1XO[1]**2))
 			distance = abs(radius * theta) - self.SIZEROBOT
 		
+		# if polar[1] > 0 and distance <= 0.35:
+		# 	print("positiveD: ", distance)
+		# elif polar[1] <= 0 and distance <= 0.35:
+		# 	print("neg o 0D: ", distance)
 		pairVelocities = []
 		if distance < 0:
-			for v in np.arange(self.VMAX, self.VMIN, -self.VCHANGE/2):
-				if v != self.VMIN:
-					pairVelocities.append([round(v,2), round(v/radius, 3)])
+			# if polar[1] > 0 and distance <= 0.35:
+			# 	print("positive: holu",)
+			# elif polar[1] <= 0 and distance <= 0.35:
+			# 	print("neg o 0: hollu")
+			#print(np.arange(self.VMAX, self.VMIN + self.VCHANGE/2, -self.VCHANGE/2))
+			for v in np.arange(self.VMAX, self.VMIN + self.VCHANGE/2, -self.VCHANGE/2):
+				w = round(v/radius, 3) if round(v/radius, 3) < self.WCHANGE/2 and round(v/radius, 3) > -self.WCHANGE/2 else 0
+				pairVelocities.append([round(v,2), round(v/radius, 3)])
+					# pairVelocities.append([round(v,2), round(v/(radius - self.SIZEROBOT),3)])
+					# pairVelocities.append([round(v,2), round(v/(radius + self.SIZEROBOT),3)])
+
+			# if polar[1] > 0 and distance <= 0.35:
+			# 	print("positiveP: ", pairVelocities)
+			# elif polar[1] <= 0 and distance <= 0.35:
+			# 	print("neg o 0P: ", pairVelocities)
 
 			return pairVelocities
 		
 		maximumV = math.sqrt(2.0 * distance * self.VMAX)
 		w = maximumV/radius
 
-		cociente = int(maximumV/self.VCHANGE)
-		maxV = round(cociente * self.VCHANGE, 2)
-		# print("maxV: ", maxV)
+		# if polar[1] > 0 and distance <= 0.35:
+		# 	print("positive: ", radius, " r1XO: ",r1XO)
+		# elif polar[1] <= 0 and distance <= 0.35:
+		# 	print("neg o 0: ", radius, "r1XO: ", r1XO)
 		
-		if maxV <= self.VMAX:
-			pairVelocities.append([maxV, w])
-			pairVelocities.append([maxV, (maxV/(radius + self.SIZEROBOT))])
-			pairVelocities.append([maxV, (maxV/(radius - self.SIZEROBOT))])
+		if maximumV <= self.VMAX:
+			pairVelocities.append([maximumV, w])
+			# print("max: ", maximumV, " chan: ", self.VCHANGE/2)
+			# print(np.arange(self.VMAX, maximumV, -self.VCHANGE/2))
+			for v in np.arange(self.VMAX, maximumV, -self.VCHANGE/2):
+				w = round(v/radius, 3) if round(v/radius, 3) < self.WCHANGE/2 and round(v/radius, 3) > -self.WCHANGE/2 else 0
+				pairVelocities.append([round(v,2), round(v/radius, 3)])
+					# pairVelocities.append([round(v,2), round(v/(radius - self.SIZEROBOT),3)])
+					# pairVelocities.append([round(v,2), round(v/(radius + self.SIZEROBOT),3)])
 
-			for v in np.arange(self.VMAX, maxV, -self.VCHANGE/2):
-				pairVelocities.append([round(v,2), round(v/radius,3)])
-				pairVelocities.append([round(v,2), round(v/(radius + self.SIZEROBOT),3)])
-				pairVelocities.append([round(v,2), round(v/(radius - self.SIZEROBOT),3)])
-
+		# if polar[1] > 0 and distance <= 0.35:
+		# 	print("positiveP: ", pairVelocities)
+		# 	print("rad: ", radius)
+		# elif polar[1] <= 0 and distance <= 0.35:
+		# 	print("neg o 0P: ", pairVelocities)
+		# 	print("rad: ", radius)
 		
 		return pairVelocities
 
@@ -243,63 +270,78 @@ class TestNode:
 		limitWUp = round(wAct + self.AMAXW * self.timeCall, 3)
 
 
-		minWCasilla = int((self.Y / 2) + round(limitWLow / self.WCHANGE))
-		maxWCasilla = int((self.Y / 2) + round(limitWUp / self.WCHANGE))
+		minWCasilla = int((self.X / 2) + round(limitWLow / self.WCHANGE))
+		maxWCasilla = int((self.X / 2) + round(limitWUp / self.WCHANGE))
 		maxVCasilla = int((round(self.VMAX/self.VCHANGE)) - round(limitVLow / self.VCHANGE))
 		minVCasilla = int((round(self.VMAX/self.VCHANGE)) - round(limitVUp / self.VCHANGE))
 
-		x = int(round((maxVCasilla - minVCasilla), 0)) + 1
-		y = int(round((maxWCasilla - minWCasilla), 0)) + 1
-		dWA = np.zeros([x,y])
+		# y = int(round((maxVCasilla - minVCasilla), 0)) + 1
+		# x = int(round((maxWCasilla - minWCasilla), 0)) + 1
+		y = int(round((self.VMAX)/ self.VCHANGE, 0)) + 1
+		x = int(round((self.WMAX * 2)/self.WCHANGE, 0)) + 1
+		dWA = np.zeros([y,x])
+		#print(y,x)
 
-		i = 0
-		if minVCasilla < 0:
-			for h in range(minVCasilla,0):
-				for j in range(0,y):
-					dWA[i][j] = self.OUT
+		# i = 0
+		# if minVCasilla < 0:
+		# 	for h in range(minVCasilla,0):
+		# 		for j in range(0,y):
+		# 			dWA[i][j] = self.OUT
 				
-				i += 1
+		# 		i += 1
 
-		i = x - 1
-		if maxVCasilla > (round(self.VMAX/self.VCHANGE)):
-			for h in range(int(round(self.VMAX/self.VCHANGE)), maxVCasilla):
-				for j in range(0,y):
-					dWA[i][j] = self.OUT
-				i -= 1
+		# i = x - 1
+		# if maxVCasilla > (round(self.VMAX/self.VCHANGE)):
+		# 	for h in range(int(round(self.VMAX/self.VCHANGE)), maxVCasilla):
+		# 		for j in range(0,y):
+		# 			dWA[i][j] = self.OUT
+		# 		i -= 1
 
-		j = 0
-		if minWCasilla < 0:
-			for h in range(minWCasilla, 0):
-				for i in range(0,x):
-					dWA[i][j] = self.OUT
-			j += 1
+		# j = 0
+		# if minWCasilla < 0:
+		# 	for h in range(minWCasilla, 0):
+		# 		for i in range(0,x):
+		# 			dWA[i][j] = self.OUT
+		# 	j += 1
 
-		j = y - 1
-		if maxWCasilla > int(self.Y / 2):
-			for h in range(int(self.Y / 2), maxWCasilla):
-				for i in range(0, x):
-					print(i,j)
-					dWA[i][j] = self.OUT
-			j -= 1
+		# j = y - 1
+
+		# if maxWCasilla > self.X:
+		# 	for h in range(int(self.X / 2), maxWCasilla):
+		# 		for i in range(0, x):
+		# 			print(i,j)
+		# 			dWA[i][j] = self.OUT
+		# 	j -= 1
 	
 		self.lock.acquire()
-		self.maxV, self.minV = self.VMAX - minVCasilla * self.VCHANGE, self.VMAX - maxVCasilla * self.VCHANGE
-		self.minW, self.maxW = (minWCasilla -(self.Y / 2)) * self.WCHANGE, (maxWCasilla - (self.Y / 2)) * self.WCHANGE
+		# self.maxV, self.minV = self.VMAX - minVCasilla * self.VCHANGE, self.VMAX - maxVCasilla * self.VCHANGE
+		# self.minW, self.maxW = (minWCasilla -(self.X / 2)) * self.WCHANGE, (maxWCasilla - (self.X / 2)) * self.WCHANGE
+		self.maxV, self.minV = self.VMAX, 0
+		self.minW, self.maxW = self.WMIN, self.WMAX
 		#POSITION ACTUAL
 		pos1 = self.locRobot
 		dt = self.timeCall
 		self.lock.release()
 
+
 		t1 = time.clock_gettime(time.CLOCK_REALTIME)
 
 		for d in scan_sub:
 			pairVelocities = self.velocityAdmissible(d, pos1)
+			#print(pairVelocities)
 
 			for velocity in pairVelocities:
-				casillaW = (self.Y / 2) + round(velocity[1] / self.WCHANGE)
+				casillaW = (self.X / 2) + round(velocity[1] / self.WCHANGE)
 				casillaV = (round(self.VMAX/self.VCHANGE)) - round(velocity[0] / self.VCHANGE)
-				if casillaV <= maxVCasilla and casillaV >= minVCasilla and casillaW <= maxWCasilla and casillaW >= minWCasilla:
-					dWA[int(casillaV-minVCasilla)][int(casillaW-minWCasilla)] = self.FORBIDEN
+				# if velocity[1] > 0:
+				# 	print("W: ", velocity[1], "V: ", velocity[0])
+				# 	print(casillaV, casillaW)
+				# 	print("x: ", x, " y: ", y)
+				# if casillaV <= maxVCasilla and casillaV >= minVCasilla and casillaW <= maxWCasilla and casillaW >= minWCasilla:
+				# 	if casillaV < self.Y :
+				# 		dWA[int(casillaV-minVCasilla)][int(casillaW-minWCasilla)] = self.FORBIDEN
+				if casillaV < y and casillaV >= 0 and casillaW < x  and casillaW >= 0:
+					dWA[int(casillaV)][int(casillaW)] = self.FORBIDEN
 				
 		self.lock.acquire()
 		self.matrix = dWA
@@ -324,9 +366,11 @@ class TestNode:
 			minW, maxW = self.minW, self.maxW
 			self.lock.release()
 
-			y = np.arange(maxV + self.VCHANGE, minV - self.VCHANGE, -self.VCHANGE)
+			# y = np.arange(maxV + self.VCHANGE, minV - self.VCHANGE, -self.VCHANGE)
+			y = np.arange(maxV + (maxV/8), minV - maxV/8, -maxV/8)
 			y = np.round(y, 2)
-			x = np.arange(minW - self.WCHANGE, maxW  + self.WCHANGE, self.WCHANGE)
+			# x = np.arange(minW - self.WCHANGE, maxW + self.WCHANGE, self.WCHANGE)
+			x = np.arange(minW - (2*maxW)/ 6, maxW + (2*maxW)/ 6, (2*maxW)/ 6)
 			x = np.round(x, 3)
 
 			# self.lock.acquire()
@@ -395,6 +439,7 @@ class TestNode:
 
 		try:
 			index = np.where(window==self.FREE)
+
 			# CHANGE THE POSITIONS RELATIVE TO POSITIONS ABSOLUTES
 			for i in range(len(index[0])):
 				positionAbsoluteLine = index[0][i] + lineAct
@@ -404,6 +449,7 @@ class TestNode:
 				#CALCULATE THE DISTANCES BETWEEN THIS POINT AND THE POINT OF THE DESIRED VELOCITY
 				distancesToDesired += [[math.sqrt((line - positionAbsoluteLine) **2+ (col - positionAbsoluteCol) ** 2)]]
 
+
 			# SELECT THE POINT WITH THE MINIMUM DISTANCE TO THE SELECTED
 			minimunDistance = np.amin(distancesToDesired)
 			searchingIndex = np.where(distancesToDesired == minimunDistance)[0][0]
@@ -412,16 +458,17 @@ class TestNode:
 			# VELOCITIES RELATED TO THE POSITION SELECTED
 			vRet = np.round((self.VMAX - selected[0] * self.VCHANGE), 2)
 			wRet = np.round(((selected[1] * self.WCHANGE) - self.WMAX), 3)
+			#print(selected)
 
-			if vRet > limitVUp:
-				vRet = limitVUp
-			elif vRet < limitVLow:
-				vRet = limitVLow
+			# if vRet > limitVUp:
+			# 	vRet = limitVUp
+			# elif vRet < limitVLow:
+			# 	vRet = limitVLow
 				
-			if wRet > limitWUp:
-				wRet = limitWUp
-			elif wRet < limitWLow:
-				wRet = limitVLow
+			# if wRet > limitWUp:
+			# 	wRet = limitWUp
+			# elif wRet < limitWLow:
+			# 	wRet = limitVLow
 
 			if vRet == 0.0 and wRet == 0.0 and (desired_v != 0 or desired_w != 0):
 				distancesToDesired[searchingIndex] = [np.inf]
@@ -470,65 +517,66 @@ class TestNode:
 		# Desired Velocities
 		desired_v = desired_vel.twist.linear.x																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																							
 		desired_w = desired_vel.twist.angular.z
-		if desired_v != 0 or desired_w != 0:
 		
-			# Actual Velocities (deseada)
-			# vAct = odom.twist.twist.linear.x if odom.twist.twist.linear.x > 0.0 or odom.twist.twist.linear.x < 0.0 else desired_v
-			# wAct = odom.twist.twist.angular.z if odom.twist.twist.angular.z > 0.0 or odom.twist.twist.angular.z < 0.0 else desired_w
-			
-			#Wait until the another thread is wake
+		# Actual Velocities (deseada)
+		# vAct = odom.twist.twist.linear.x if odom.twist.twist.linear.x > 0.0 or odom.twist.twist.linear.x < 0.0 else desired_v
+		# wAct = odom.twist.twist.angular.z if odom.twist.twist.angular.z > 0.0 or odom.twist.twist.angular.z < 0.0 else desired_w
+		
+		# Save the distances that the LaserScan catch
+		scan_ranges = np.array(scan.ranges)
+
+		#Wait until the another thread is wake
+		self.lock.acquire()
+		wake = self.wake
+		self.lock.release()
+
+
+
+		while not wake:
+			self.VBEF = 0
+			self.WBEF = 0
 			self.lock.acquire()
 			wake = self.wake
 			self.lock.release()
+			time.sleep(0.1)
 
-			while not wake:
-				self.VBEF = 0
-				self.WBEF = 0
-				self.lock.acquire()
-				wake = self.wake
-				self.lock.release()
-				time.sleep(0.1)
+		distance = 1.4
+		
+		# print(scan.ranges)
+		# print("BEF: ", self.BEFORE)
+		# print(scan.ranges == self.BEFORE)
+		middle = np.array(scan_ranges[478:600])
+		top = np.array(scan_ranges[601:])
+		bottom = np.array(scan_ranges[:477])
+		div = 5
 
-			distance = 1.4
-			# Save the distances that the LaserScan catch
-			scan_ranges = np.array(scan.ranges)
-			# print(scan.ranges)
-			# print("BEF: ", self.BEFORE)
-			# print(scan.ranges == self.BEFORE)
-			middle = np.array(scan_ranges[478:600])
-			top = np.array(scan_ranges[601:])
-			bottom = np.array(scan_ranges[:477])
-
-			distanceAngles = 2.5
+		distanceAngles = self.ANGLE_VISION/(int(len(scan_ranges)/div))
 
 
-			th = np.arange(-self.ANGLE_VISION/2, self.ANGLE_VISION/2 + distanceAngles, distanceAngles)
-			
-			# Create a array with the minimum distance of the 10 positions and add the angle 
-			scan_sub = np.array([[np.amin(scan_ranges[(k-10):k]), th[int((k/10) - 1)]] for k in np.arange(10, len(scan_ranges) + 19, 10)])
-			
-			t6 = time.clock_gettime(time.CLOCK_REALTIME)
-			TestNode.velocities(self, self.VBEF, self.WBEF, scan_sub)
+		th = np.arange(-self.ANGLE_VISION/2, self.ANGLE_VISION/2 + distanceAngles, distanceAngles)
+		
+		# Create a array with the minimum distance of the 10 positions and add the angle 
+		scan_sub = np.array([[np.amin(scan_ranges[(k-div):k]), np.deg2rad(th[int((k/div) - 1)])] for k in np.arange(div, len(scan_ranges), div)])
+		# print(scan_sub[int(len(scan_sub)/3): int(2*len(scan_sub)/3)])
+		t6 = time.clock_gettime(time.CLOCK_REALTIME)
+		TestNode.velocities(self, self.VBEF, self.WBEF, scan_sub)
 
-			self.lock.acquire()
-			posibilities = self.matrix
-			self.lock.release()
+		self.lock.acquire()
+		posibilities = self.matrix
+		self.lock.release()
 
-			v, w = TestNode.searchVelocities(self, desired_v, desired_w, posibilities)
-			#print("t7: ", time.clock_gettime(time.CLOCK_REALTIME) - t6)
-			self.VBEF = v
-			self.WBEF = w
-			print("selected: ", v, w)
+		v, w = TestNode.searchVelocities(self, desired_v, desired_w, posibilities)
+		print("se: ", v,w)
+		#print("t7: ", time.clock_gettime(time.CLOCK_REALTIME) - t6)
+		self.VBEF = v
+		self.WBEF = w
 
-			# v = desired_v
-			# w = desired_w
+		# v = desired_v
+		# w = desired_w
 
-			# v, w = TestNode.skipObstacle(self,scan_ranges, middle, top, bottom, desired_v, desired_w, distance)																																																				
-			#print("t5: ", time.clock_gettime(time.CLOCK_REALTIME) - t5)
-			self.BEFORE = scan.ranges
-		else:
-			v = desired_v
-			w = desired_w
+		# v, w = TestNode.skipObstacle(self,scan_ranges, middle, top, bottom, desired_v, desired_w, distance)																																																				
+		#print("t5: ", time.clock_gettime(time.CLOCK_REALTIME) - t5)
+		self.BEFORE = scan.ranges
 		# else:
 		# v = self.VBEF
 		# w = self.WBEF
