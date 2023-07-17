@@ -53,7 +53,12 @@ class TestNode:
 	X = (WMAX - WMIN) / WCHANGE
 	Y = (VMAX - VMIN) / VCHANGE
 
-	LASTRADIUS = np.inf
+	# AVANCEDISTANCE = VCHANGE * TIMECALL
+	DISTANCEBEFORE = np.inf
+	LOCOBSBEFORE = []
+	ESQUINA = True
+
+	MOVINGX, MOVINGY, MOVINGBOTH = False, False, False
 
 	def __init__(self):
 		self.lidar_sub = message_filters.Subscriber('base_scan', LaserScan)
@@ -168,31 +173,46 @@ class TestNode:
 		'''
 		return np.array([distance[0] * np.cos(distance[1]), distance[0] * np.sin(distance[1]), distance[1]])
 	
-	def discrete(self, distance: float, rad: float):
+	def discrete(self, distance: float, rad: float, vMax: float):
 		distTotal = 0
-		for v in np.arange(self.VMIN, self.VMAX, self.VCHANGE):
-			v = round(v, 2)
+		for v in np.arange(self.VMIN, vMax, self.VCHANGE):
+			v = round(v,2)
 			w = v/rad
-
+			# Calculo la distancia recorrida en el arco
 			thetaRec = w * self.TIMECALL
-			# print(rad, thetaRec)
+
 			if rad == np.inf:
-				distTotal += (v * self.TIMECALL )
+				distTotal += (v * self.TIMECALL)
 			else:
 				distTotal += abs(rad * thetaRec)
-			# if distance < 1:
-				# print("v: ", v, " distT: ", distTotal, " distan: ", distance, " rad: ", rad)
-			if (distTotal + self.SIZEROBOT)>= distance:
-
-				#v = math.sqrt(2 * distTotal * self.AMAXV)
-				# print("vRet: ", v)
+			if (distTotal + self.SIZEROBOT) >= distance:
 				return v
 			
-		return self.VMAX
+		return 10
 	
-	def velocityAdmissible(self, polar, positionAct):
+	def discreteW(self, v: float, rad: float, distance: float):
+		mul = int((distance)/ (v*self.TIMECALL))
+		if rad > 0:
+			wMin = (self.WBEF - mul * (self.WMAX * self.TIMECALL)) if  (self.WBEF - mul * (self.WMAX * self.TIMECALL)) >= 0 else self.WMIN
+			wMax = (self.WBEF + mul * (self.WMAX * self.TIMECALL))
+		elif rad < 0:
+			wMin = (self.WBEF - mul * (self.WMAX * self.TIMECALL))
+			wMax = (self.WBEF + mul * (self.WMAX * self.TIMECALL)) if (self.WBEF + mul * (self.WMAX * self.TIMECALL)) <= 0 else self.WMAX
+		else:
+			wMin = (self.WBEF - mul * (self.WMAX * self.TIMECALL))
+			wMax = (self.WBEF + mul * (self.WMAX * self.TIMECALL))
+
+		return wMin, wMax
+			
+	
+	def velocityAdmissible(self, polar):
 		# TRABSFORM THE POLAR DSITANCES TO THE CARTESIANS ONE
+		wXR1 = self.locRobot
+		wTR1 = hom(wXR1)
 		r1XO = self.polar2Cartesian(polar)
+		r1TO = hom(r1XO)
+
+		wXO = loc(wTR1 @ r1TO)
 
 		theta = 1
 		# CALCULO LAS DISTANCIAS A LOS DIFERENTES PUNTOS DEL OBSTACULO EN LA SIGUIENTE POSICIÓN DEL ROBOT
@@ -212,76 +232,173 @@ class TestNode:
 		else:
 			#CALCULO EL RADIO Y LA THETA PARA ALCANZAR DICHA POSICIÓN
 			radius = ((r1XO[0]) ** 2 + (r1XO[1])**2) / (2 * r1XO[1])
-			theta = math.atan2((2 * r1XO[0] * r1XO[1]), (r1XO[0]**2 - r1XO[1]**2))
-			distance = abs(radius * theta) - self.SIZEROBOT
+			if abs(radius) < 0.1:
+				radius = np.inf
+				distance = r1XO[0] - self.SIZEROBOT
+			else:
+				theta = math.atan2((2 * r1XO[0] * r1XO[1]), ((r1XO[0])**2 - (r1XO[1])**2)) 
+				distance = abs(radius * theta) - self.SIZEROBOT
 
-		print(distance, radius)
-			
+		interWXO2 = []
+		# print("radN: ", radius)
+
+		#INFERIOR CORNER
+		if self.ESQUINA and distance < 2 and self.DISTANCEBEFORE < 2:
+			self.ESQUINA = False
+			# print("inf")
+			# Moving on X's axis
+			if abs(wXO[0] - self.LOCOBSBEFORE[0]) > 0.01 and abs(wXO[1] - self.LOCOBSBEFORE[1]) <= 0.01:
+				# print("x axis inf")
+				x = self.LOCOBSBEFORE[0] - self.SIZEROBOT if abs(wXO[0] - self.LOCOBSBEFORE[0]) > 0 else self.LOCOBSBEFORE[0] + self.SIZEROBOT 
+				interWXO2 = [ x, self.LOCOBSBEFORE[1], math.atan(self.LOCOBSBEFORE[1] /x)]
+				self.MOVINGX = True
+				# print("X 1: ", self.LOCOBSBEFORE, "2: ", interWXO2)
+
+			# Moving on Y's Axis
+			elif abs(wXO[0] - self.LOCOBSBEFORE[0]) <= 0.01 and abs(wXO[1] - self.LOCOBSBEFORE[1]) > 0.01:
+				# print("y axis inf")
+				y = self.LOCOBSBEFORE[1] - self.SIZEROBOT if abs(wXO[1] - self.LOCOBSBEFORE[1]) > 0 else self.LOCOBSBEFORE[1] + self.SIZEROBOT
+				interWXO2 = [ self.LOCOBSBEFORE[0], y, math.atan(y /self.LOCOBSBEFORE[0])] 
+				self.MOVINGY = True
+				# print("Y 1: ", self.LOCOBSBEFORE, "2: ", interWXO2)
+
+			# Move on both Axies
+			else:
+				# print("move both inf")
+				x = self.LOCOBSBEFORE[0] - self.SIZEROBOT if abs(wXO[0] - self.LOCOBSBEFORE[0]) > 0 else self.LOCOBSBEFORE[0] + self.SIZEROBOT 
+				y = self.LOCOBSBEFORE[1] - self.SIZEROBOT if abs(wXO[1] - self.LOCOBSBEFORE[1]) > 0 else self.LOCOBSBEFORE[1] + self.SIZEROBOT
+				interWXO2 = [ x, y, math.atan(y / x)] 
+				self.MOVINGBOTH = True
+				# print("X Y 1: ", self.LOCOBSBEFORE, "2: ", interWXO2)
+
+
+
+		#SUPERIOR BORDER 
+		elif distance > 2 and self.DISTANCEBEFORE < 2:
+			# print("sup")
+			# Moving on X's axis
+			if self.MOVINGX:
+				# print("x axis sup")
+				x = wXO[0] - self.SIZEROBOT if abs(wXO[0] - wXO[0]) > 0 else wXO[0] + self.SIZEROBOT 
+				interWXO2 = [ x, self.LOCOBSBEFORE[1], math.atan(self.LOCOBSBEFORE[1] /x)]
+				self.MOVINGX = False
+				# print("X 1: ", wXO, "2: ", interWXO2)
+
+
+			# Moving on Y's Axis
+			elif self.MOVINGY:
+				# print("y axis sup")
+				y = wXO[1] - self.SIZEROBOT if abs(wXO[1] - wXO[1]) > 0 else wXO[1] + self.SIZEROBOT
+				interWXO2 = [ self.LOCOBSBEFORE[0], y, math.atan(y /self.LOCOBSBEFORE[0])] 
+				self.MOVINGY = False
+			# Move on both Axies
+			else:
+				# print("move both sup")
+				x = wXO[0] - self.SIZEROBOT if abs(wXO[0] - wXO[0]) > 0 else wXO[0] + self.SIZEROBOT 
+				y = wXO[1] - self.SIZEROBOT if abs(wXO[1] - wXO[1]) > 0 else wXO[1] + self.SIZEROBOT
+				interWXO2 = [ x, y, math.atan(y / x)] 
+				self.MOVINGBOTH = False
+			self.ESQUINA = True
 		
-		# if polar[1] > 0 and distance <= 0.35:
-		# 	print("positiveD: ", distance)
-		# elif polar[1] <= 0 and distance <= 0.35:
-		# 	print("neg o 0D: ", distance)
 
+			
+
+		self.DISTANCEBEFORE = distance
+		self.LOCOBSBEFORE = wXO
+		
 		pairVelocities = []
-		if distance <= 0.01:
-			for v in np.arange(self.VMAX, self.VMIN + self.VCHANGE/2, -self.VCHANGE/2):
-				pairVelocities.append([round(v,2), round(v/radius, 3)])
+
+		if distance <= 0:
+			for v in np.arange(self.VMAX, self.VMIN + self.VCHANGE/2, -self.VCHANGE/2 ):
+				w = v/radius
+				if (radius < 0 and w <= 0) or (radius > 0 and w >= 0):
+					pairVelocities.append([round(v,2), round(v/radius, 3)])
+				wMin, wMax = self.discreteW(v, radius, distance)
+				for w in np.arange(self.WMIN, wMin, self.WCHANGE/2):
+					pairVelocities.append([round(v,2), round(w,3)])
+				for w in np.arange(wMax, self.WMAX, self.WCHANGE/2):
+					pairVelocities.append([round(v,2), round(w,3)])
 		else:
-			vMax = self.discrete(distance, radius)
+			# Continuos 
+			vMax = math.sqrt(2*distance*self.AMAXV)
+			# Discrete
+			vMax = self.discrete(distance, radius, vMax)
 			w = vMax / radius
 			pairVelocities.append([vMax,w])
 
-			for v in np.arange(self.VMAX, vMax, -self.VCHANGE/4):
-				pairVelocities.append([round(v,2), round(v/radius, 3)])
+			for v in np.arange(self.VMAX, vMax, -self.VCHANGE/2):
+				w = v/radius
+				if (radius < 0 and w <= 0) or (radius > 0 and w >= 0):
+					pairVelocities.append([round(v,2), round(w, 3)])
+				wMin, wMax = self.discreteW(v, radius, distance)
+				for w in np.arange(self.WMIN, wMin, self.WCHANGE/2):
+					pairVelocities.append([round(v,2), round(w,3)])
+				for w in np.arange(wMax, self.WMAX, self.WCHANGE/2):
+					pairVelocities.append([round(v,2), round(w,3)])
 
-		self.LASTRADIUS = radius
-		# if distance < 1:
-		# 	print(pairVelocities)
-		# if distance < 0:
-		# 	# if polar[1] > 0 and distance <= 0.35:
-		# 	# 	print("positive: holu",)
-		# 	# elif polar[1] <= 0 and distance <= 0.35:
-		# 	# 	print("neg o 0: hollu")
-		# 	#print(np.arange(self.VMAX, self.VMIN + self.VCHANGE/2, -self.VCHANGE/2))
-		# 	for v in np.arange(self.VMAX, self.VMIN + self.VCHANGE/2, -self.VCHANGE/2):
-		# 		w = round(v/radius, 3) if round(v/radius, 3) < self.WCHANGE/2 and round(v/radius, 3) > -self.WCHANGE/2 else 0
-		# 		pairVelocities.append([round(v,2), round(v/radius, 3)])
-		# 			# pairVelocities.append([round(v,2), round(v/(radius - self.SIZEROBOT),3)])
-		# 			# pairVelocities.append([round(v,2), round(v/(radius + self.SIZEROBOT),3)])
+		# print("PRe: ", pairVelocities)
+		if interWXO2 != []:
+			r1XO2 = loc(np.linalg.inv(hom(wXR1)) @ hom(interWXO2) )
+			theta = 1
 
-		# 	# if polar[1] > 0 and distance <= 0.35:
-		# 	# 	print("positiveP: ", pairVelocities)
-		# 	# elif polar[1] <= 0 and distance <= 0.35:
-		# 	# 	print("neg o 0P: ", pairVelocities)
+			# print("inter",interWXO2)
+			# print(wXO)
+			# print("l: ",r1XO)
+			# print("x: ",r1XO2)
+			# CALCULO LAS DISTANCIAS A LOS DIFERENTES PUNTOS DEL OBSTACULO EN LA SIGUIENTE POSICIÓN DEL ROBOT
+			if r1XO2[0] == 0 and r1XO2[1] == 0:
+				radius = np.inf
+				distance = 0
+			#SI Y ES IGUAL A 0, NO  HAY ARCO 
+			elif r1XO2[1] == 0:
+				radius = np.inf
+				distance = r1XO2[0] - self.SIZEROBOT
 
-		# 	return pairVelocities
-		
-		# maximumV = math.sqrt(2.0 * distance * self.VMAX)
-		# w = maximumV/radius
+			#SI X ES IGUAL A 0
+			elif r1XO2[0] == 0:
+				radius = r1XO2[1]/2
+				theta = math.atan2(0, r1XO2[1]**2)
+				distance = abs(radius * theta) -  self.SIZEROBOT
+			else:
+				#CALCULO EL RADIO Y LA THETA PARA ALCANZAR DICHA POSICIÓN
+				radius = ((( r1XO2[0]) ** 2 +  (r1XO2[1]))**2) / (2 * r1XO2[1])
+				if abs(radius) < 0.1:
+					radius = np.inf
+					distance = r1XO2[0] - self.SIZEROBOT
+				else:
+					theta = math.atan2((2 * r1XO2[0] * r1XO2[1]),  ((r1XO2[0])**2 - (r1XO2[1])**2)) 
+					distance = abs(radius * theta) - self.SIZEROBOT
 
-		# # if polar[1] > 0 and distance <= 0.35:
-		# # 	print("positive: ", radius, " r1XO: ",r1XO)
-		# # elif polar[1] <= 0 and distance <= 0.35:
-		# # 	print("neg o 0: ", radius, "r1XO: ", r1XO)
-		
-		# if maximumV <= self.VMAX:
-		# 	pairVelocities.append([maximumV, w])
-		# 	# print("max: ", maximumV, " chan: ", self.VCHANGE/2)
-		# 	# print(np.arange(self.VMAX, maximumV, -self.VCHANGE/2))
-		# 	for v in np.arange(self.VMAX, maximumV, -self.VCHANGE/2):
-		# 		w = round(v/radius, 3) if round(v/radius, 3) < self.WCHANGE/2 and round(v/radius, 3) > -self.WCHANGE/2 else 0
-		# 		pairVelocities.append([round(v,2), round(v/radius, 3)])
-		# 			# pairVelocities.append([round(v,2), round(v/(radius - self.SIZEROBOT),3)])
-		# 			# pairVelocities.append([round(v,2), round(v/(radius + self.SIZEROBOT),3)])
+			if distance <= 0:
+				for v in np.arange(self.VMAX, self.VMIN + self.VCHANGE/2, -self.VCHANGE/2 ):
+					w = v/radius
+					if (radius < 0 and w <= 0) or (radius > 0 and w >= 0):
+						pairVelocities.append([round(v,2), round(v/radius, 3)])
+					wMin, wMax = self.discreteW(v, radius, distance)
+					for w in np.arange(self.WMIN, wMin, self.WCHANGE/2):
+						pairVelocities.append([round(v,2), round(w,3)])
+					for w in np.arange(wMax, self.WMAX, self.WCHANGE/2):
+						pairVelocities.append([round(v,2), round(w,3)])
+			else:
+				vMax = math.sqrt(2*distance*self.AMAXV)
+				vMax = self.discrete(distance, radius, vMax)
+				w = vMax / radius
+				pairVelocities.append([vMax,w])
 
-		# # if polar[1] > 0 and distance <= 0.35:
-		# # 	print("positiveP: ", pairVelocities)
-		# # 	print("rad: ", radius)
-		# # elif polar[1] <= 0 and distance <= 0.35:
-		# # 	print("neg o 0P: ", pairVelocities)
-		# # 	print("rad: ", radius)
-		
+				for v in np.arange(self.VMAX, vMax, -self.VCHANGE/2):
+					w = v/radius
+					if (radius < 0 and w <= 0) or (radius > 0 and w >= 0):
+						pairVelocities.append([round(v,2), round(w, 3)])
+					wMin, wMax = self.discreteW(v, radius, distance)
+					for w in np.arange(self.WMIN, wMin, self.WCHANGE/2):
+						pairVelocities.append([round(v,2), round(w,3)])
+					for w in np.arange(wMax, self.WMAX, self.WCHANGE/2):
+						pairVelocities.append([round(v,2), round(w,3)])
+			
+			# print("radI: ", radius)
+
+				
+		# print("last: ", pairVelocities)
 		return pairVelocities
 
 	
@@ -309,65 +426,61 @@ class TestNode:
 		limitWLow = round(wAct - self.AMAXW * self.timeCall, 3)
 		limitWUp = round(wAct + self.AMAXW * self.timeCall, 3)
 
-
 		minWCasilla = int((self.X / 2) + round(limitWLow / self.WCHANGE))
 		maxWCasilla = int((self.X / 2) + round(limitWUp / self.WCHANGE))
 		maxVCasilla = int((round(self.VMAX/self.VCHANGE)) - round(limitVLow / self.VCHANGE))
 		minVCasilla = int((round(self.VMAX/self.VCHANGE)) - round(limitVUp / self.VCHANGE))
 
-		y = int(round((maxVCasilla - minVCasilla), 0)) + 1
-		x = int(round((maxWCasilla - minWCasilla), 0)) + 1
-		# y = int(round((self.VMAX)/ self.VCHANGE, 0)) + 1
-		# x = int(round((self.WMAX * 2)/self.WCHANGE, 0)) + 1
+		# y = int(round((maxVCasilla - minVCasilla), 0)) + 1
+		# x = int(round((maxWCasilla - minWCasilla), 0)) + 1
+		y = int(round((self.VMAX)/ self.VCHANGE, 0)) + 1
+		x = int(round((self.WMAX * 2)/self.WCHANGE, 0)) + 1
 		dWA = np.zeros([y,x])
-		#print(y,x)
+		# print("vy: ", y, " wx: ", x)
 
-		i = 0
-		if minVCasilla < 0:
-			for h in range(minVCasilla,0):
-				for j in range(0,y):
-					dWA[i][j] = self.OUT
-				
-				i += 1
+		# i = 0
+		# if minVCasilla < 0:
+		# 	for h in range(minVCasilla,0):
+		# 		for j in range(0,y):
+		# 			dWA[i][j] = self.OUT
 
-		i = x - 1
-		if maxVCasilla > (round(self.VMAX/self.VCHANGE)):
-			for h in range(int(round(self.VMAX/self.VCHANGE)), maxVCasilla):
-				for j in range(0,y):
-					dWA[i][j] = self.OUT
-				i -= 1
+		# 		i += 1
 
-		j = 0
-		if minWCasilla < 0:
-			for h in range(minWCasilla, 0):
-				for i in range(0,x):
-					dWA[i][j] = self.OUT
-			j += 1
+		# i = x - 1
+		# if maxVCasilla > (round(self.VMAX/self.VCHANGE)):
+		# 	print(maxVCasilla, (round(self.VMAX/self.VCHANGE)))
+		# 	for h in range(int(round(self.VMAX/self.VCHANGE)), maxVCasilla):
+		# 		for j in range(0,y):
+		# 			dWA[i][j] = self.OUT
+		# 		i -= 1
 
-		j = y - 1
+		# j = 0
+		# if minWCasilla < 0:
+		# 	for h in range(minWCasilla, 0):
+		# 		for i in range(0,x):
+		# 			dWA[i][j] = self.OUT
+		# 	j += 1
 
-		if maxWCasilla > self.X:
-			for h in range(int(self.X / 2), maxWCasilla):
-				for i in range(0, x):
-					print(i,j)
-					dWA[i][j] = self.OUT
-			j -= 1
+		# j = y - 1
+
+		# if maxWCasilla > self.X:
+		# 	for h in range(int(self.X / 2), maxWCasilla):
+		# 		for i in range(0, x):
+		# 			dWA[i][j] = self.OUT
+		# 	j -= 1
 	
 		self.lock.acquire()
-		self.maxV, self.minV = self.VMAX - minVCasilla * self.VCHANGE, self.VMAX - maxVCasilla * self.VCHANGE
-		self.minW, self.maxW = (minWCasilla -(self.X / 2)) * self.WCHANGE, (maxWCasilla - (self.X / 2)) * self.WCHANGE
-		# self.maxV, self.minV = self.VMAX, 0
-		# self.minW, self.maxW = self.WMIN, self.WMAX
-		#POSITION ACTUAL
-		pos1 = self.locRobot
-		dt = self.timeCall
+		# self.maxV, self.minV = self.VMAX - minVCasilla * self.VCHANGE, self.VMAX - maxVCasilla * self.VCHANGE
+		# self.minW, self.maxW = (minWCasilla -(self.X / 2)) * self.WCHANGE, (maxWCasilla - (self.X / 2)) * self.WCHANGE
+		self.maxV, self.minV = self.VMAX, 0
+		self.minW, self.maxW = self.WMIN, self.WMAX
 		self.lock.release()
 
 
 		t1 = time.clock_gettime(time.CLOCK_REALTIME)
 
 		for d in scan_sub:
-			pairVelocities = self.velocityAdmissible(d, pos1)
+			pairVelocities = self.velocityAdmissible(d)
 			#print(pairVelocities)
 
 			for velocity in pairVelocities:
@@ -377,13 +490,13 @@ class TestNode:
 				# 	print("W: ", velocity[1], "V: ", velocity[0])
 				# 	print(casillaV, casillaW)
 				# 	print("x: ", x, " y: ", y)
-				if casillaV <= maxVCasilla and casillaV >= minVCasilla and casillaW <= maxWCasilla and casillaW >= minWCasilla:
-					if casillaV < self.Y :
-						dWA[int(casillaV-minVCasilla)][int(casillaW-minWCasilla)] = self.FORBIDEN
-
-						# print(dWA)
-				# if casillaV < y and casillaV >= 0 and casillaW < x  and casillaW >= 0:
-				# 	dWA[int(casillaV)][int(casillaW)] = self.FORBIDEN
+				# if casillaV <= maxVCasilla and casillaV >= minVCasilla and casillaW <= maxWCasilla and casillaW >= minWCasilla:
+				# 	if casillaV < self.Y :
+				# 		dWA[int(casillaV-minVCasilla)][int(casillaW-minWCasilla)] = self.FORBIDEN
+				if casillaV < y and casillaV >= 0 and casillaW < x  and casillaW >= 0:
+					if casillaV < self.Y: 
+						# print(casillaV, casillaW)
+						dWA[int(casillaV)][int(casillaW)] = self.FORBIDEN
 				
 		self.lock.acquire()
 		self.matrix = dWA
@@ -408,11 +521,11 @@ class TestNode:
 			minW, maxW = self.minW, self.maxW
 			self.lock.release()
 
-			y = np.arange(maxV + self.VCHANGE, minV - self.VCHANGE, -self.VCHANGE)
-			# y = np.arange(maxV + (maxV/8), minV - maxV/8, -maxV/8)
+			# y = np.arange(maxV + self.VCHANGE, minV - self.VCHANGE, -self.VCHANGE)
+			y = np.arange(maxV + (maxV/8), minV - maxV/8, -maxV/8)
 			y = np.round(y, 2)
-			x = np.arange(minW - self.WCHANGE, maxW + self.WCHANGE, self.WCHANGE)
-			# x = np.arange(minW - (2*maxW)/ 6, maxW + (2*maxW)/ 6, (2*maxW)/ 6)
+			# x = np.arange(minW - self.WCHANGE, maxW + self.WCHANGE, self.WCHANGE)
+			x = np.arange(minW - (2*maxW)/ 6, maxW + (2*maxW)/ 6, (2*maxW)/ 6)
 			x = np.round(x, 3)
 
 			# self.lock.acquire()
@@ -556,6 +669,7 @@ class TestNode:
 		(_, _, th) = euler_from_quaternion (thsList)
 
 		self.locRobot = np.array([x, y, th])
+		# print("pos: ", self.locRobot)
 		# Desired Velocities
 		desired_v = desired_vel.twist.linear.x																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																							
 		desired_w = desired_vel.twist.angular.z
@@ -583,6 +697,7 @@ class TestNode:
 			time.sleep(0.1)
 
 		distance = 1.4
+		self.ESQUINA = True
 		
 		# print(scan.ranges)
 		# print("BEF: ", self.BEFORE)
@@ -599,7 +714,8 @@ class TestNode:
 		
 		# Create a array with the minimum distance of the 10 positions and add the angle 
 		scan_sub = np.array([[np.amin(scan_ranges[(k-div):k]), np.deg2rad(th[int((k/div) - 1)])] for k in np.arange(div, len(scan_ranges), div)])
-		# print(scan_sub[int(len(scan_sub)/3): int(2*len(scan_sub)/3)])
+		# grades = np.array([[np.amin(scan_ranges[(k-div):k]), th[int((k/div) - 1)]] for k in np.arange(div, len(scan_ranges), div)])
+		# print(grades)
 		t6 = time.clock_gettime(time.CLOCK_REALTIME)
 		TestNode.velocities(self, self.VBEF, self.WBEF, scan_sub)
 
@@ -615,6 +731,11 @@ class TestNode:
 
 		# v = desired_v
 		# w = desired_w
+		# pos1 = self.nextPosition(v,w,self.locRobot)
+		# print(pos1)
+
+		# self.VBEF = v
+		# self.WBEF = w
 
 		# v, w = TestNode.skipObstacle(self,scan_ranges, middle, top, bottom, desired_v, desired_w, distance)																																																				
 		#print("t5: ", time.clock_gettime(time.CLOCK_REALTIME) - t5)
@@ -623,7 +744,7 @@ class TestNode:
 		# v = self.VBEF
 		# w = self.WBEF
 		# print("t5: ", time.clock_gettime(time.CLOCK_REALTIME) - t5)
-		#input("continue")
+		input("continue")
 		self.send_vel(v,w)
 		#rospy.loginfo(rospy.get_caller_id() + "Min range %f", np.minimum(scan_ranges))
 

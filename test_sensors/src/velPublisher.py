@@ -54,7 +54,7 @@ class VelPub:
 		rTG = np.linalg.inv(wTR) @ wTG
 		rXG = loc(rTG)
 		#print(rXG)
-		if abs(rXG[0]) > 0.15 or abs(rXG[1]) > 0.15:
+		if abs(rXG[0]) > 0.5 or abs(rXG[1]) > 0.5:
 			# IF THE GOAL IS UPPER OR DOWN TO THE ROBOT
 			if rXG[1]!= 0:
 				radius = (rXG[0]**2 + rXG[1]**2) / (2 * rXG[1])
@@ -111,6 +111,8 @@ class VelPub:
 			#THE ROBOT IS IN THE GOAL OR VERY CLOSE
 			msg.twist.linear.x = 0
 			msg.twist.angular.z = 0
+
+
 		
 		msg.header.stamp = rospy.Time.now()
 		self.pub.publish(msg)
