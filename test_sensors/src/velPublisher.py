@@ -113,7 +113,7 @@ class VelPub:
 			msg.twist.angular.z = 0
 
 		# msg.twist.linear.x = 0.7
-		# msg.twist.angular.z = 1.047
+		# msg.twist.angular.z = 0
 		msg.header.stamp = rospy.Time.now()
 		self.pub.publish(msg)
 		# print("publisher: ", time.clock_gettime(time.CLOCK_REALTIME) - t)
