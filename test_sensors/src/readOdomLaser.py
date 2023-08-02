@@ -40,7 +40,7 @@ class TestNode:
 	# Maximum distance for possible collision
 	MAXDISTANCE = AMAXW/2
 
-	SIZEROBOT = 0.2
+	SIZEROBOT = 0.25
 
 	# Value of the difference between the velocities chosen
 	VCHANGE = (AMAXV * TIMECALL) / 3
@@ -177,10 +177,13 @@ class TestNode:
 
 			x = r * cos(th)
 			y = r * sin(th)
-			th = rad(th)
+			th = atan2(2*x*y, x**2 - y**2)
 
 		'''
-		return np.array([distance[0] * np.cos(distance[1]), distance[0] * np.sin(distance[1]), distance[1]])
+		x = distance[0] * np.cos(distance[1])
+		y = distance[0] * np.sin(distance[1])
+		th = math.atan2(2*x*y, (x)**2 - (y)**2)
+		return np.array([x, y, th])
 	
 	def calculoDistance(self, r1XO):
 		theta = 0
@@ -231,59 +234,76 @@ class TestNode:
 			
 	
 	def velocityAdmissible(self, polar):
-		if polar[0] < 0.1:
-			print("polar pass")
-			return []
-		# TRABSFORM THE POLAR DSITANCES TO THE CARTESIANS ONE
+		# if polar[0] < 0.1:
+		# 	return []
+		# TRABSFORM THE POLAR DSITANCES TO THE CARTESIANS  ONE
 		wXR1 = self.locRobot
 		# print(wXR1)
 		wTR1 = hom(wXR1)
 		r1XO = self.polar2Cartesian(polar)
-		# print(r1XO)
+		# print("d: ", polar[1])
+		# print("r:",r1XO)
 		r1TO = hom(r1XO)
 
 		wXO = loc(wTR1 @ r1TO)
-		# print(wXO)
+		# print("w: ",wXO)
 
 		radius, theta, distance = self.calculoDistance(r1XO)
 		#print(radius, theta, distance)
-		if distance < 2:
-			print("----")
-			print(wXR1)
-			print(polar)
-			print(r1XO)
-			print(wXO)
-			print("rad: ", radius)
-			print("-----")
+		# if distance < 2:
+		# 	print("----")
+		# # 	print(wXR1)
+		# 	print(polar)
+		# # 	print(r1XO)
+		# 	print(wXO)
+		# # 	print("rad: ", ra  dius)
+		# 	print("-----")
 		# print("N_" , radius, " d: ", distance, "x: ", wXO)
 
 		pairVelocities = []
+	
 
 
 		
-		# if distance < 2 and self.DISTANCEBEFORE < 2:
-		# 	thetaD = math.atan2(polar[1], self.THETABEFORE)
+		if distance < 2 and self.DISTANCEBEFORE < 2:
+			# print(wXO, self.LOCOBSBEFORE)
+			# x = wXO[0] - self.LOCOBSBEFORE[0]
+			# y = wXO[1] - self.LOCOBSBEFORE[1]
+			thetaAtan = math.atan2(abs(self.LOCOBSBEFORE[2]), abs(r1XO[2]))
+			print("th:", np.rad2deg(thetaAtan), "y: ", self.LOCOBSBEFORE, "x: ", r1XO)
+			thetaD = math.pi - thetaAtan if r1XO[2] >= 0 else -math.pi + thetaAtan
+			thetaD = math.pi if r1XO[2] == 0 or self.LOCOBSBEFORE[2] == 0 else thetaD
+			print("thN: ", np.rad2deg(thetaD))
+			# print(np.rad2deg(thetaD), x, y)
 		# 	print(polar[1], self.THETABEFORE)
 			
-		# 	r1XO2 = self.polar2Cartesian(np.array([polar[0] - self.SIZEROBOT, thetaD]))
+			o1XO2 = self.polar2Cartesian(np.array([self.SIZEROBOT, thetaD]))
+			print(o1XO2)
+			print(o1XO2[0], o1XO2[1], np.rad2deg(o1XO2[2]))
 		# 	print("thetaD: ", thetaD)
-		# 	print("polar: ", polar)
+			# print("polar: ", polar)
 		# 	print("distance: ", polar[0]-self.SIZEROBOT)
 
-		# 	# r1XO2 = loc(r1TO @ hom(o1XO2))
+			r1XO2 = loc(r1TO @ hom(o1XO2))
 		# 	print("r1XO: ", r1XO)
 		# 	print("r1XO2: ", r1XO2)
-		# 	print("wXO2: ", loc(hom(wXR1) @ hom(r1XO2)))
+			print("wXO",wXO)
+			print("wXO2: ", loc(hom(wXO) @ hom(o1XO2)))
 		# 	print("-----")
 		# 	self.THETABEFORE = polar[1]
-		# 	radius, theta, distance = self.calculoDistance(r1XO2)
+			radius, theta, distance = self.calculoDistance(r1XO2)
 			#print(radius, distance)
 
 		if distance < 0:
 			for v in np.arange(self.VMIN + self.VCHANGE, self.VMAX, self.VCHANGE):
-				w = v / radius
+				w = v/radius
+				w2 = v/self.LASTRADIUS
+				# print(w,w2)
 				if (radius < 0 and w <= 0) or (radius > 0 and w >= 0):
-					pairVelocities.append([round(v, 2), round(w,3)])
+					pairVelocities.append([round(v,2), round(w, 3)])
+					wchange = round(self.WCHANGE/2 if w < w2 else -self.WCHANGE/2,3)
+					for w1 in np.arange(w, w2, wchange):
+						pairVelocities.append([round(v,2), round(w1,3)])
 
 		elif distance < 10:
 			# Discrete
@@ -294,8 +314,14 @@ class TestNode:
 
 			for v in np.arange(self.VMAX, vMax, -self.VCHANGE/2):
 				w = v/radius
-				if (radius < 0 and w <= 0) or (radius > 0 and w >= 0):
+				w2 = v/self.LASTRADIUS
+				if (radius < 0 and w <= 0 and polar[1] <= 0) or (radius > 0 and w >= 0 and polar[1] >= 0):
 					pairVelocities.append([round(v,2), round(w, 3)])
+					wchange = round(self.WCHANGE/2 if w < w2 else -self.WCHANGE/2,3)
+					# print("wC:", wchange)
+					for w1 in np.arange(w, w2, wchange):
+						# print(w1)
+						pairVelocities.append([round(v,2), round(w1,3)])
 
 		interR1XO2 = []
 		# # # print("radN: ", radius)
@@ -304,33 +330,41 @@ class TestNode:
 		if self.ESQUINA and distance < 2 and self.DISTANCEBEFORE < 2:
 			self.ESQUINA = False
 			# print("inf")
-			interR1XO2 = self.polar2Cartesian(np.array([polar[0], polar[1] - 0.3]))
+			o1XO2 = self.polar2Cartesian(np.array([self.SIZEROBOT, np.deg2rad(-90)]))
+			print("o: ", o1XO2)
+			interR1XO2 = loc(r1TO @ hom(o1XO2))
+			print("inter: ", interR1XO2)
+			# interR1XO2 = self.polar2Cartesian(np.array([polar[0], polar[1] - 0.3]))
 			#interR1XO2 = loc(r1TO @ hom(o1XO2))
 
 
 
 		#SUPERIOR BORDER 
-		elif not self.ESQUINA and (distance > 2 and self.DISTANCEBEFORE < 2) or self.LASTDISTANCE:
-			interR1XO2 = self.polar2Cartesian(np.array([self.DISTANCEBEFORE, polar[1] + 0.3]))
+		elif not self.ESQUINA and ((distance > 2 and self.DISTANCEBEFORE < 2) or self.LASTDISTANCE):
+			o1XO2 = self.polar2Cartesian(np.array([self.SIZEROBOT, np.deg2rad(90)]))
+			print("o: ", o1XO2)
+			interR1XO2 = loc(hom(self.LOCOBSBEFORE) @ hom(o1XO2))
+			print("inter: ", interR1XO2)
 			#interR1XO2 = loc(r1TO @ hom(o1XO2))
 			self.ESQUINA = True
 
 		
 		self.DISTANCEBEFORE = distance
 			
-		if interR1XO2 != []:
-			print("inter: ",loc(hom(wXR1) @ hom(interR1XO2)))
-			theta = 1
+		if len(interR1XO2) != 0:
+		# 	print("inter: ",loc(hom(wXR1) @ hom(interR1XO2)))
+		# 	theta = 1
 
-			# print("radiusAnt: ", radius)
-			# print("r1XO2: ", r1XO2)
-			# print("r1XO:: ", r1XO)
+		# 	# print("radiusAnt: ", radius)
+		# 	# print("r1XO2: ", r1XO2)
+		# 	# print("r1XO:: ", r1XO)
 
 			rad, theta, distance = self.calculoDistance(interR1XO2)
-			# print("inter: ", rad, "dis, ", distance, " x: ", interWXO2)
-			# print("radESQUINAS: ", rad)
+			print("Inter wXO2: ", loc(wTR1 @ hom(interR1XO2)))
+		# 	# print("inter: ", rad, "dis, ", distance, " x: ", interWXO2)
+		# 	# print("radESQUINAS: ", rad)
 
-			# Podría poner negativo toda la velocidades?, dependiendo del lado donde se encuentre
+		# 	# Podría poner negativo toda la velocidades?, dependiendo del lado donde se encuentre
 			if distance < 0:
 				# print("distance neg")
 				for v in np.arange(self.VMIN + self.VCHANGE, self.VMAX, self.VCHANGE):
@@ -354,24 +388,24 @@ class TestNode:
 				for v in np.arange(self.VMAX, vMax, -self.VCHANGE/2):
 					wInter = round(v/rad,3)
 					w = round(v/self.LASTRADIUS,3)
-					if (rad < 0 and wInter <= 0) or (rad > 0 and wInter >= 0):
+					if (rad < 0 and wInter <= 0 and polar[1] <= 0) or (rad > 0 and wInter >= 0 and polar[1] >= 1) :
 						pairVelocities.append([round(v,2), round(wInter, 3)])
 						wchange = round(self.WCHANGE/2 if w > wInter else -self.WCHANGE/2,3)
 
 						for w2 in np.arange(wInter, w, wchange):
 							pairVelocities.append([round(v,2), round(w2,3)])
 
-						# pairVelocities.append([round(v,2), round(w1, 3)])
-						# pairVelocities.append([round(v,2), round(w2, 3)])
-				w = self.WMAX if rad >= 0 else self.WMIN
-				# rad, wMax, vMin = self.discreteW(self.VMIN, rad, distance, w, r1XO)
-				#print("Discrete: ", rad, wMax, vMin)
+		# 				# pairVelocities.append([round(v,2), round(w1, 3)])
+		# 				# pairVelocities.append([round(v,2), round(w2, 3)])
+		# 		w = self.WMAX if rad >= 0 else self.WMIN
+		# 		# rad, wMax, vMin = self.discreteW(self.VMIN, rad, distance, w, r1XO)
+		# 		#print("Discrete: ", rad, wMax, vMin)
 
-				# for v in np.arange(vMin, self.VMAX, self.VCHANGE):
-				# 	w = v/rad
-				# 	pairVelocities.append([round(v,2), round(w,3)])
+		# 		# for v in np.arange(vMin, self.VMAX, self.VCHANGE):
+		# 		# 	w = v/rad
+		# 		# 	pairVelocities.append([round(v,2), round(w,3)])
 
-		self.LOCOBSBEFORE = wXO
+		self.LOCOBSBEFORE = r1XO
 		self.LASTRADIUS = radius
 
 		return pairVelocities
@@ -709,7 +743,7 @@ class TestNode:
 		th = np.arange(-self.ANGLE_VISION/2, self.ANGLE_VISION/2 + self.DISTANCEANGLE, self.DISTANCEANGLE)
 		
 		# Create a array with the minimum distance of the 10 positions and add the angle 
-		scan_sub = np.array([[np.amin(scan_ranges[(k-div):k]) - self.SIZEROBOT, np.deg2rad(th[int((k/div) - 1)])] for k in np.arange(div, len(scan_ranges), div)])
+		scan_sub = np.array([[np.amin(scan_ranges[(k-div):k]), np.deg2rad(th[int((k/div) - 1)])] for k in np.arange(div, len(scan_ranges), div)])
 		# print(scan_sub)
 		# grades = np.array([[np.amin(scan_ranges[(k-div):k]), th[int((k/div) - 1)]] for k in np.arange(div, len(scan_ranges), div)])
 		# print(grades)
