@@ -78,7 +78,7 @@ define erratic position
 (
   #size [0.415 0.392 0.25]
   size [0.150 0.150 0.150]
-  origin [0.000 0.000 0.000 0.000]
+  origin [0.00 0.000 0.000 0.000]
   gui_nose 1
   drive "diff"
   topurg(pose [ 0.000 0.000 0.000 0.000 ])
@@ -86,13 +86,14 @@ define erratic position
 
 
 # throw in a robot
-erratic( pose [ -4.5 -6.0 0.000 0.000 ] name "Audrie" color "blue")
+erratic( pose [ -4.5 -6.0 0.000 0] name "Audrie" color "blue")
 #block( pose [-5 -6 0 0 ] name "obstacle" color "red")
 #block( pose [-5.2 -5.2 0 0 ] name "obstacle" color "red")
-block( pose [ -4.5 -5.2 0.000 0.000 ] name "obstacle2" color "red")
-#block( pose [ -4.5 -6.5 0.000 0.000 ] name "obstacle3" color "red")
-#block( pose [ -5.2 -6.8 0.000 0.000 ] name "obstacle4" color "red")
+#block( pose [ -4.5 -5.2 0.000 0.000 ] name "obstacle2" color "red")
+#block( pose [ -4.5 -6.8 0.000 0.000 ] name "obstacle3" color "red")
+#block( pose [ -4.52 -7.14 0.000 0.000 ] name "obstacle4" color "red")
 #block( pose [ -3.5 -6 0.000 0.000 ] name "obstacle5" color "red")
-#block( pose [ -3.9 -5.6 0.000 0.000 ] name "obstacle5" color "red")
+#block( pose [ -5.5 -6 0.000 0.000 ] name "obstacle5" color "red")
+block( pose [ -3.6 -6 0.000 0.000 ] name "obstacle6" color "red")
 target2( pose [ 2 6 0.000 0.000 ] name "t1" color "yellow")
 
